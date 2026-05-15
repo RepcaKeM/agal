@@ -129,7 +129,7 @@ Symlinks don't survive cloud agents (Claude Code Web, Cursor cloud) or a fresh
 
 ```bash
 agal --prepare backend-dev --remote   # copies skill + guideline content
-git add .agents .claude AGENTS.md     # commit as part of the project
+git add .agents .claude AGENTS.md CLAUDE.md GEMINI.md KIMI.md   # commit with the project
 ```
 
 Trade-off: edits in your library no longer propagate — re-run `--prepare`.
@@ -190,5 +190,7 @@ agal <preset> <cli>   run directly
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled presets and guidelines only; third-party
-skill content is licensed by its respective upstream projects (all MIT).
+MIT — see [LICENSE](LICENSE). Covers this repo's own content only (tool,
+presets, guidelines). The skill library is not bundled; third-party skills are
+governed by their own upstream licenses — see the table above (mostly MIT;
+`andrej-karpathy-skills` is unlicensed and referenced only, not redistributed).
