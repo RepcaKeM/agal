@@ -15,7 +15,7 @@ each is a subdirectory with `SKILL.md` plus optional `scripts/`, `references/`, 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baszczkacper/agal/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bash
 ```
 
 The bootstrap installs the `agal` CLI (via `pipx` / `uv` / managed venv — no system
@@ -25,8 +25,8 @@ starter `~/.agal/config.yaml`.
 Or install the CLI directly:
 
 ```bash
-pipx install git+https://github.com/baszczkacper/agal.git
-# or:  uv tool install git+https://github.com/baszczkacper/agal.git
+pipx install git+https://github.com/RepcaKeM/agal.git
+# or:  uv tool install git+https://github.com/RepcaKeM/agal.git
 ```
 
 Optional but recommended: `fzf` (interactive preset/skill picker).

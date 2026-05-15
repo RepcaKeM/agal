@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # agal — Agent Agnostic Launch :: bootstrap installer
 #
-#   curl -fsSL https://raw.githubusercontent.com/baszczkacper/agal/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bash
 #
 # Installs the `agal` CLI, wires ~/.agal/presets to the bundled presets, and
 # writes a starter config. Idempotent — safe to re-run.
 #
 # Env overrides:
-#   AGAL_REPO        git URL to clone (default: github.com/baszczkacper/agal)
+#   AGAL_REPO        git URL to clone (default: github.com/RepcaKeM/agal)
 #   AGAL_HOME        state dir       (default: ~/.agal)
 #   AGAL_SKILLS_DIR  skill library   (asked interactively if unset)
 
 set -euo pipefail
 
-AGAL_REPO="${AGAL_REPO:-https://github.com/baszczkacper/agal.git}"
+AGAL_REPO="${AGAL_REPO:-https://github.com/RepcaKeM/agal.git}"
 AGAL_HOME="${AGAL_HOME:-$HOME/.agal}"
 SRC_DIR="$AGAL_HOME/src"
 

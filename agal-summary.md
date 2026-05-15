@@ -128,12 +128,12 @@ Disable: `core_preset: null`.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baszczkacper/agal/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bash
 ```
 
 Installs the CLI via `pipx` / `uv` / a managed venv (no system-Python pollution),
 links `~/.agal/presets` to the repo presets, and writes a starter config. Direct
-alternative: `pipx install git+https://github.com/baszczkacper/agal.git`.
+alternative: `pipx install git+https://github.com/RepcaKeM/agal.git`.
 
 Then `agal --config` to set `skills_dir`. `fzf` recommended for interactive pickers.
 

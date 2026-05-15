@@ -9,12 +9,12 @@ description = "Agent Agnostic Launch — per-project skill presets for Claude Co
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
-authors = [{ name = "Kacper Baszczak", email = "baszczkacper@gmail.com" }]
+authors = [{ name = "Kacper Baszczyński", email = "baszczkacper@gmail.com" }]
 keywords = ["claude", "gemini", "kimi", "agent", "skills", "cli", "llm"]
 dependencies = ["pyyaml>=6.0"]
 
 [project.urls]
-Homepage = "https://github.com/baszczkacper/agal"
+Homepage = "https://github.com/RepcaKeM/agal"
 
 [project.scripts]
 agal = "agal:main"
