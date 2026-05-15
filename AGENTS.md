@@ -1,55 +1,60 @@
-## 1. Think Before Coding
+# Agent coding guidelines
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+Four working habits that keep agent-written code small, correct, and easy to
+trust. They bias toward care over raw speed; for throwaway or trivial work, use
+judgment.
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+## 1. Reason first, then write
 
-## 2. Simplicity First
+Treat uncertainty as something to expose, not bury.
 
-**Minimum code that solves the problem. Nothing speculative.**
+- Spell out the assumptions your solution depends on. If one is shaky, ask.
+- When a request can be read more than one way, lay out the readings instead of
+  quietly committing to one.
+- If there's a leaner path than the one implied, name it — disagreement is fine.
+- Hitting something genuinely unclear is a stop signal: say what's unclear and
+  get an answer before continuing.
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+## 2. Smallest thing that works
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+Write the minimum that solves the actual problem. Nothing on spec.
 
-## 3. Surgical Changes
+- No capabilities that weren't requested.
+- No abstraction layer over code with a single caller.
+- No configuration knobs or "future-proofing" nobody asked for.
+- No guards against states that cannot occur.
 
-**Touch only what you must. Clean up only your own mess.**
+Sanity check: if the draft is 200 lines and the problem fits in 50, the draft is
+wrong — redo it. If an experienced engineer would call it over-built, it is.
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
+## 3. Change only what the task touches
 
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+Edit narrowly. Leave the rest of the file as you found it.
 
-The test: Every changed line should trace directly to the user's request.
+- Don't polish neighbouring code, comments, or whitespace.
+- Don't rewrite things that already work.
+- Follow the surrounding style even when your taste differs.
+- Spot unrelated dead code? Mention it; don't remove it on your own.
+- If your edit strands an import, variable, or helper, remove that orphan —
+  but only the orphans your change created, not pre-existing cruft.
 
-## 4. Goal-Driven Execution
+Test for every modified line: it should trace straight back to what was asked.
 
-**Define success criteria. Loop until verified.**
+## 4. Drive toward a checkable outcome
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+Convert vague asks into something you can verify, then iterate until it holds.
 
-For multi-step tasks, state a brief plan:
+- "Add validation" becomes "tests for the bad inputs, then make them pass."
+- "Fix the bug" becomes "a test that reproduces it, then make it pass."
+- "Refactor X" becomes "green tests before and green tests after."
+
+For anything multi-step, write the plan as steps paired with their checks:
+
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. <step>  → check: <how you'll know it worked>
+2. <step>  → check: <how you'll know it worked>
+3. <step>  → check: <how you'll know it worked>
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+Concrete success criteria let you loop on your own. Vague ones ("make it work")
+force a round-trip for every ambiguity.

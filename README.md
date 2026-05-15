@@ -39,15 +39,15 @@ This repo ships the **tool, the presets, and the coding guidelines** — *not* t
 skill library itself. You supply your own `skills_dir`. Presets reference skills
 by directory name; point `skills_dir` at any Anthropic-standard skill collection.
 
-The presets here were curated against skills sourced from these MIT-licensed
-projects — clone any of them as a starting library:
+The presets here were curated against skills sourced from these projects —
+clone any of them as a starting library:
 
-| Source | Notes |
+| Source | License |
 |---|---|
 | [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents) | MIT |
 | [obra/superpowers](https://github.com/obra/superpowers) | MIT |
-| [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) | MIT |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | MIT |
+| [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) | **No license** — all rights reserved by author; not redistributed here, reference only |
 
 Set the path after install:
 
@@ -56,9 +56,10 @@ agl --config        # set skills_dir: /path/to/your/skills
 agl --check         # verify every SKILL.md has name + description frontmatter
 ```
 
-The `AGENTS.md` coding guidelines are derived from
-[Andrej Karpathy's](https://github.com/forrestchang/andrej-karpathy-skills) public
-guidance on working with coding agents.
+The `AGENTS.md` coding guidelines are original prose written for this project.
+The underlying ideas (reason before coding, minimal solutions, surgical edits,
+verifiable outcomes) are widely held; the wording is our own and MIT-licensed
+with the rest of this repo.
 
 ---
 
