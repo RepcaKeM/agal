@@ -3,9 +3,9 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agl-agent-launch"
+name = "agal-agent-agnostic-launch"
 version = "2.0.0"
-description = "Agent Launch — per-project skill presets for Claude Code, Gemini CLI and Kimi CLI"
+description = "Agent Agnostic Launch — per-project skill presets for Claude Code, Gemini CLI and Kimi CLI"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -14,10 +14,10 @@ keywords = ["claude", "gemini", "kimi", "agent", "skills", "cli", "llm"]
 dependencies = ["pyyaml>=6.0"]
 
 [project.urls]
-Homepage = "https://github.com/baszczkacper/agl"
+Homepage = "https://github.com/baszczkacper/agal"
 
 [project.scripts]
-agl = "agl:main"
+agal = "agal:main"
 
 [tool.setuptools]
-py-modules = ["agl"]
+py-modules = ["agal"]

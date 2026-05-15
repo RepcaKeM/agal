@@ -7,20 +7,20 @@ dist/
 .venv/
 venv/
 
-# agl-generated artifacts (skill + context symlinks/copies)
+# agal-generated artifacts (skill + context symlinks/copies)
 .agents/
 .claude/
-.agl_managed
-.agl_context
+.agal_managed
+.agal_context
 
 # Skill library — NOT bundled, user supplies (see README "Skills")
 Skills/
 
-# Repo-local dogfooding symlinks (agl generates these per-project)
+# Repo-local dogfooding symlinks (agal generates these per-project)
 /CLAUDE.md
 /GEMINI.md
 /KIMI.md
 
 # Local config
-.agl/
+.agal/
 *.local

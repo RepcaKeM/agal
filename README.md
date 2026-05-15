@@ -1,10 +1,10 @@
-# agl — Agent Launch
+# agal — Agent Agnostic Launch
 
 Per-project **skill presets** for **Claude Code**, **Gemini CLI** and **Kimi CLI**.
 
 By default every agent CLI discovers *all* available skills — context noise, weaker
-activation, wasted tokens. `agl` inverts this: you define a **preset** (e.g.
-`backend-dev`, `wireframing`), and `agl` links only those skills into the project.
+activation, wasted tokens. `agal` inverts this: you define a **preset** (e.g.
+`backend-dev`, `wireframing`), and `agal` links only those skills into the project.
 The agent sees a small, relevant set instead of the global pile.
 
 Skills follow the **[Anthropic Agent Skills standard](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview)** —
@@ -15,18 +15,18 @@ each is a subdirectory with `SKILL.md` plus optional `scripts/`, `references/`, 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baszczkacper/agl/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/baszczkacper/agal/main/install.sh | bash
 ```
 
-The bootstrap installs the `agl` CLI (via `pipx` / `uv` / managed venv — no system
-Python pollution), links `~/.agl/presets` to the bundled presets, and writes a
-starter `~/.agl/config.yaml`.
+The bootstrap installs the `agal` CLI (via `pipx` / `uv` / managed venv — no system
+Python pollution), links `~/.agal/presets` to the bundled presets, and writes a
+starter `~/.agal/config.yaml`.
 
 Or install the CLI directly:
 
 ```bash
-pipx install git+https://github.com/baszczkacper/agl.git
-# or:  uv tool install git+https://github.com/baszczkacper/agl.git
+pipx install git+https://github.com/baszczkacper/agal.git
+# or:  uv tool install git+https://github.com/baszczkacper/agal.git
 ```
 
 Optional but recommended: `fzf` (interactive preset/skill picker).
@@ -52,8 +52,8 @@ clone any of them as a starting library:
 Set the path after install:
 
 ```bash
-agl --config        # set skills_dir: /path/to/your/skills
-agl --check         # verify every SKILL.md has name + description frontmatter
+agal --config        # set skills_dir: /path/to/your/skills
+agal --check         # verify every SKILL.md has name + description frontmatter
 ```
 
 The `AGENTS.md` coding guidelines are original prose written for this project.
@@ -68,13 +68,13 @@ with the rest of this repo.
 ```bash
 cd ~/projects/my-project
 
-agl --prepare backend-dev   # link skills + guidelines into the project
-agl --status                # show active preset
+agal --prepare backend-dev   # link skills + guidelines into the project
+agal --status                # show active preset
 # ... run claude / gemini / kimi ...
-agl --unprepare             # remove everything agl created
+agal --unprepare             # remove everything agal created
 
 # Interactive: pick preset → pick CLI → launch
-agl
+agal
 ```
 
 `--prepare` creates, in the project root:
@@ -83,7 +83,7 @@ agl
 - `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — the coding guidelines
   (skipped if you already have your own file by that name)
 
-Everything is tracked by markers; `--unprepare` removes only what `agl` made and
+Everything is tracked by markers; `--unprepare` removes only what `agal` made and
 never touches your own files.
 
 ---
@@ -128,7 +128,7 @@ Symlinks don't survive cloud agents (Claude Code Web, Cursor cloud) or a fresh
 `git clone` on another machine. For portable setups, copy content instead:
 
 ```bash
-agl --prepare backend-dev --remote   # copies skill + guideline content
+agal --prepare backend-dev --remote   # copies skill + guideline content
 git add .agents .claude AGENTS.md     # commit as part of the project
 ```
 
@@ -136,21 +136,21 @@ Trade-off: edits in your library no longer propagate — re-run `--prepare`.
 
 ---
 
-## Per-project config (`AGL_CONFIG`)
+## Per-project config (`AGAL_CONFIG`)
 
-Skip the global `~/.agl/config.yaml` for a monorepo with its own setup:
+Skip the global `~/.agal/config.yaml` for a monorepo with its own setup:
 
 ```bash
-mkdir -p .agl
-cat > .agl/config.yaml <<EOF
+mkdir -p .agal
+cat > .agal/config.yaml <<EOF
 skills_dir:   /opt/skills
-presets_dir:  /opt/agl/presets
+presets_dir:  /opt/agal/presets
 core_preset:  dev-workflow-core
-context_file: /opt/agl/AGENTS.md
+context_file: /opt/agal/AGENTS.md
 EOF
 
-export AGL_CONFIG=$(pwd)/.agl/config.yaml
-agl --prepare backend-dev
+export AGAL_CONFIG=$(pwd)/.agal/config.yaml
+agal --prepare backend-dev
 ```
 
 ---
@@ -159,26 +159,26 @@ agl --prepare backend-dev
 
 ```bash
 # Presets
-agl --new <name>       new preset (fzf multi-select)
-agl --list             list presets
-agl --info <name>      what's in a preset
-agl --edit <name>      edit in $EDITOR
-agl --validate <name>  check every skill resolves + has frontmatter
+agal --new <name>       new preset (fzf multi-select)
+agal --list             list presets
+agal --info <name>      what's in a preset
+agal --edit <name>      edit in $EDITOR
+agal --validate <name>  check every skill resolves + has frontmatter
 
 # Project
-agl --prepare <name>      link skills + guidelines into cwd
-agl --prepare <name> -r   remote mode (copy instead of symlink)
-agl --status              active preset + mode
-agl --unprepare           remove everything agl created
+agal --prepare <name>      link skills + guidelines into cwd
+agal --prepare <name> -r   remote mode (copy instead of symlink)
+agal --status              active preset + mode
+agal --unprepare           remove everything agal created
 
 # Diagnostics
-agl --check     flag skills missing frontmatter
-agl --config    open config.yaml
+agal --check     flag skills missing frontmatter
+agal --config    open config.yaml
 
 # Launch
-agl                  interactive
-agl <preset>         pick CLI
-agl <preset> <cli>   run directly
+agal                  interactive
+agal <preset>         pick CLI
+agal <preset> <cli>   run directly
 ```
 
 ---
@@ -186,7 +186,7 @@ agl <preset> <cli>   run directly
 ## Docs
 
 - `AGENTS.md` — coding guidelines (read by all CLIs as project context)
-- `agl-summary.md` — full architecture, design evolution, known limits
+- `agal-summary.md` — full architecture, design evolution, known limits
 
 ## License
 

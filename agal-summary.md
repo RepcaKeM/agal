@@ -1,4 +1,4 @@
-# agl — Agent Launch: project summary
+# agal — Agent Agnostic Launch: project summary
 
 ## The problem
 
@@ -17,7 +17,7 @@ many-terminals/many-branches problem, but not the per-session skill set problem.
 
 ### v1 — inject into the context file (rejected)
 
-First approach: `agl --prepare backend` concatenated the selected skills into one
+First approach: `agal --prepare backend` concatenated the selected skills into one
 big `CLAUDE.md` / `GEMINI.md` / `KIMI.md` and injected it into the project.
 
 **Problem:** burns tokens. Every skill enters context on every message, even when
@@ -64,7 +64,7 @@ description: When and what to use it for. The more precise, the better — the a
 ```
 
 Gemini **silently ignores** files without `name:` and `description:` frontmatter.
-Check yours: `agl --check`.
+Check yours: `agal --check`.
 
 ---
 
@@ -83,13 +83,13 @@ ship scripts/references/examples without restructuring.
     references/
   ...
 
-~/.agl/
+~/.agal/
   config.yaml                  ← skills_dir, core_preset, context_file, CLI paths
   presets/                     ← dir-symlink → repo/presets/
     backend-dev.yaml
     dev-workflow-core.yaml     ← meta-preset auto-merged into every preset
 
-project/                       ← created by agl --prepare
+project/                       ← created by agal --prepare
   AGENTS.md  →  repo/AGENTS.md           ← coding guidelines (symlink or copy)
   CLAUDE.md  →  repo/AGENTS.md
   GEMINI.md  →  repo/AGENTS.md
@@ -108,8 +108,8 @@ library, change is visible in every project immediately.
 `config.yaml: context_file: /path/to/AGENTS.md` makes `--prepare` place
 `AGENTS.md` plus per-CLI `CLAUDE.md` / `GEMINI.md` / `KIMI.md` in the project
 root (symlink, or copy under `--remote`). The set of created files is tracked in
-`.agl_context`; `--unprepare` removes only those. An existing file you wrote
-yourself (not created by agl) is never overwritten — it's skipped with a notice.
+`.agal_context`; `--unprepare` removes only those. An existing file you wrote
+yourself (not created by agal) is never overwritten — it's skipped with a notice.
 
 Set `context_file: null` to disable.
 
@@ -118,7 +118,7 @@ Set `context_file: null` to disable.
 `config.yaml: core_preset: dev-workflow-core` — a meta-preset merged into every
 preset. Core skills load BEFORE preset skills, deduplicated.
 
-Example: `agl --prepare ai-ml` → ai-ml skills + dev-workflow-core skills
+Example: `agal --prepare ai-ml` → ai-ml skills + dev-workflow-core skills
 (brainstorming, planning, TDD, git-worktrees, etc. always available).
 
 Disable: `core_preset: null`.
@@ -128,14 +128,14 @@ Disable: `core_preset: null`.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baszczkacper/agl/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/baszczkacper/agal/main/install.sh | bash
 ```
 
 Installs the CLI via `pipx` / `uv` / a managed venv (no system-Python pollution),
-links `~/.agl/presets` to the repo presets, and writes a starter config. Direct
-alternative: `pipx install git+https://github.com/baszczkacper/agl.git`.
+links `~/.agal/presets` to the repo presets, and writes a starter config. Direct
+alternative: `pipx install git+https://github.com/baszczkacper/agal.git`.
 
-Then `agl --config` to set `skills_dir`. `fzf` recommended for interactive pickers.
+Then `agal --config` to set `skills_dir`. `fzf` recommended for interactive pickers.
 
 The skill library is **not bundled** — see README → "Skills are NOT bundled" for
 MIT-licensed source collections.
@@ -146,35 +146,35 @@ MIT-licensed source collections.
 
 ```bash
 # Presets
-agl --new backend          # new preset — fzf multi-select from the library
-agl --list                 # presets with skill counts
-agl --info backend          # which skills are in a preset
-agl --edit backend          # edit preset in $EDITOR
+agal --new backend          # new preset — fzf multi-select from the library
+agal --list                 # presets with skill counts
+agal --info backend          # which skills are in a preset
+agal --edit backend          # edit preset in $EDITOR
 
 # Project mode (e.g. emdash / worktree workflow)
-agl --prepare backend       # links skills + guidelines into cwd
-agl --status                # active preset, mode, guidelines
-agl --prepare automation    # swap preset (old links removed)
-agl --unprepare             # remove everything agl created
+agal --prepare backend       # links skills + guidelines into cwd
+agal --status                # active preset, mode, guidelines
+agal --prepare automation    # swap preset (old links removed)
+agal --unprepare             # remove everything agal created
 
 # Pure CLI mode
-agl                         # interactive: pick preset → pick CLI
-agl backend                 # pick CLI only
-agl backend claude          # run directly (links auto-removed on exit)
+agal                         # interactive: pick preset → pick CLI
+agal backend                 # pick CLI only
+agal backend claude          # run directly (links auto-removed on exit)
 
 # Diagnostics
-agl --check                 # which skills lack frontmatter
-agl --validate backend-dev  # is the preset (after core merge) complete
-agl --config                # open config.yaml
+agal --check                 # which skills lack frontmatter
+agal --validate backend-dev  # is the preset (after core merge) complete
+agal --config                # open config.yaml
 
 # Remote (cloud agents, CI, devcontainers, portable projects)
-agl --prepare backend-dev --remote   # copy content instead of symlinking
+agal --prepare backend-dev --remote   # copy content instead of symlinking
 ```
 
-### `AGL_CONFIG` env var (per-project config)
+### `AGAL_CONFIG` env var (per-project config)
 
-When you don't want the global `~/.agl/config.yaml` (e.g. a monorepo with its own
-setup), point `AGL_CONFIG` at a project-local `config.yaml`.
+When you don't want the global `~/.agal/config.yaml` (e.g. a monorepo with its own
+setup), point `AGAL_CONFIG` at a project-local `config.yaml`.
 
 ---
 
@@ -182,7 +182,7 @@ setup), point `AGL_CONFIG` at a project-local `config.yaml`.
 
 ```bash
 cd ~/projects/my-project
-agl --prepare backend      # creates .agents/skills/ + .claude/skills/ + guidelines
+agal --prepare backend      # creates .agents/skills/ + .claude/skills/ + guidelines
 
 # Open emdash → "Add Task" → pick CLI
 # emdash creates a worktree (project copy) → .agents/skills/ goes with it
@@ -196,7 +196,7 @@ agl --prepare backend      # creates .agents/skills/ + .claude/skills/ + guideli
 ## Preset format
 
 ```yaml
-# ~/.agl/presets/backend.yaml
+# ~/.agal/presets/backend.yaml
 name: backend
 description: Node.js + PostgreSQL backend development
 notes: |
@@ -223,10 +223,10 @@ automatically — don't repeat them in the preset.
 | Cloud agent (Claude Code Web, Cursor cloud, Devin) | `--remote` |
 | CI/CD pipeline (ephemeral runner, no skills_dir) | `--remote` |
 | Monorepo shipped with skills baked in | `--remote` + git commit |
-| Project cloned by devs without an agl setup | `--remote` |
+| Project cloned by devs without an agal setup | `--remote` |
 
 `--remote` trade-off:
-- ➕ Portable — works anywhere after clone, no `agl install`
+- ➕ Portable — works anywhere after clone, no `agal install`
 - ➕ Self-contained — exactly the skills as of `--prepare` time
 - ➖ No central updates — library edits don't propagate (re-run `--prepare`)
 - ➖ Larger project — content copied instead of 60-byte symlinks
@@ -240,6 +240,6 @@ automatically — don't repeat them in the preset.
   with `automation` simultaneously won't work — emdash has no per-task skill
   selection yet.
 - **Frontmatter:** Gemini requires `name:` and `description:` in every SKILL.md.
-  `agl --check` flags files to fix.
+  `agal --check` flags files to fix.
 - **Kimi `--skills-dir`:** the flag can skip global discovery, but must be passed
-  manually at launch — `agl` doesn't inject it automatically (yet).
+  manually at launch — `agal` doesn't inject it automatically (yet).

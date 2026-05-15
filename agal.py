@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agl — Agent Launch  (v2)
+agal — Agent Agnostic Launch  (v2)
 Zarządza presetami skilli dla Claude Code, Gemini CLI i Kimi CLI.
 Używa symlinkowania do .agents/skills/ i .claude/skills/ zamiast
 wstrzykiwania treści do plików kontekstowych.
@@ -9,23 +9,23 @@ Każdy CLI ładuje tylko nazwy+opisy skilli na starcie — pełna treść
 SKILL.md jest pobierana dopiero gdy agent uzna że task pasuje.
 
 Użycie:
-  agl                          # interaktywny launcher (fzf)
-  agl <preset>                 # wybierz CLI interaktywnie
-  agl <preset> <cli>           # uruchom bezpośrednio
-  agl -l / --list              # lista presetów
-  agl -n / --new  <name>       # nowy preset (fzf multi-select)
-  agl -e / --edit <name>       # edytuj preset w $EDITOR
-  agl -i / --info <name>       # szczegóły presetu
-  agl -p / --prepare <preset>  # utwórz symlinki w cwd (tryb emdash)
-  agl -u / --unprepare         # usuń symlinki z cwd
-  agl -s / --status            # pokaż aktywny preset w cwd
-  agl -k / --check             # sprawdź frontmatter skilli
-  agl -V / --validate <name>   # sprawdź czy preset jest kompletny
-  agl -r / --remote            # modyfikator: kopiuj zamiast symlinkować
-  agl -c / --config            # otwórz config w $EDITOR
+  agal                          # interaktywny launcher (fzf)
+  agal <preset>                 # wybierz CLI interaktywnie
+  agal <preset> <cli>           # uruchom bezpośrednio
+  agal -l / --list              # lista presetów
+  agal -n / --new  <name>       # nowy preset (fzf multi-select)
+  agal -e / --edit <name>       # edytuj preset w $EDITOR
+  agal -i / --info <name>       # szczegóły presetu
+  agal -p / --prepare <preset>  # utwórz symlinki w cwd (tryb emdash)
+  agal -u / --unprepare         # usuń symlinki z cwd
+  agal -s / --status            # pokaż aktywny preset w cwd
+  agal -k / --check             # sprawdź frontmatter skilli
+  agal -V / --validate <name>   # sprawdź czy preset jest kompletny
+  agal -r / --remote            # modyfikator: kopiuj zamiast symlinkować
+  agal -c / --config            # otwórz config w $EDITOR
 
 Env vars:
-  AGL_CONFIG=path/to/config.yaml   # nadpisz lokalizację configu (per-projekt)
+  AGAL_CONFIG=path/to/config.yaml   # nadpisz lokalizację configu (per-projekt)
 
 Wymagania:
   pip install pyyaml --break-system-packages
@@ -47,10 +47,10 @@ except ImportError:
     sys.exit(1)
 
 # ── Ścieżki ───────────────────────────────────────────────────────────────────
-# AGL_CONFIG env var nadpisuje lokalizację config.yaml.
-# Przydatne dla per-projekt configów (np. .agl/config.yaml w repo) zamiast globalnego ~/.agl.
+# AGAL_CONFIG env var nadpisuje lokalizację config.yaml.
+# Przydatne dla per-projekt configów (np. .agal/config.yaml w repo) zamiast globalnego ~/.agal.
 
-CONFIG_FILE = Path(os.environ.get("AGL_CONFIG") or (Path.home() / ".agl" / "config.yaml")).expanduser()
+CONFIG_FILE = Path(os.environ.get("AGAL_CONFIG") or (Path.home() / ".agal" / "config.yaml")).expanduser()
 CONFIG_DIR  = CONFIG_FILE.parent
 PRESETS_DIR = CONFIG_DIR / "presets"  # nadpisywalne przez `presets_dir` w config.yaml
 
@@ -60,12 +60,12 @@ SKILL_DIRS = [
     ".claude/skills",   # Claude Code + Kimi CLI
 ]
 
-AGL_MARKER_FILE = ".agl_managed"   # marker w każdym katalogu tworzonym przez agl
+AGAL_MARKER_FILE = ".agal_managed"   # marker w każdym katalogu tworzonym przez agal
 
 # Pliki kontekstowe (coding guidelines) tworzone w root projektu.
 # Każdy CLI czyta inną nazwę; AGENTS.md to open standard (Gemini/Kimi).
 CONTEXT_FILENAMES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "KIMI.md"]
-AGL_CONTEXT_MARKER = ".agl_context"   # lista plików kontekstowych utworzonych przez agl
+AGAL_CONTEXT_MARKER = ".agal_context"   # lista plików kontekstowych utworzonych przez agal
 
 DEFAULT_CONFIG = {
     # Katalog z twoją biblioteką 200+ plików .md
@@ -230,7 +230,7 @@ def pick_skills_multi(skills_dir: str) -> list[str]:
 def list_presets() -> None:
     presets = sorted(PRESETS_DIR.glob("*.yaml"))
     if not presets:
-        print("Brak presetów. Utwórz pierwszy: agl --new <nazwa>")
+        print("Brak presetów. Utwórz pierwszy: agal --new <nazwa>")
         return
     print(f"\n{'Preset':<22} {'Skille':>6}  Opis")
     print("─" * 58)
@@ -408,7 +408,7 @@ def check_skills(config: dict) -> None:
     ---
 """)
 
-# ── Symlinki — serce nowego agl ───────────────────────────────────────────────
+# ── Symlinki — serce nowego agal ───────────────────────────────────────────────
 
 def _skill_stem(filename: str) -> str:
     """typescript.md → typescript"""
@@ -425,7 +425,7 @@ def _create_skill_symlinks(skills_list: list[str], skills_dir: Path,
 
     Copy mode (--remote):
       target_dir/.agents/skills/<stem>/  ← cała zawartość skopiowana, brak symlinków
-      Projekt portable — działa po cloneowaniu na inną maszynę bez agl/skills_dir.
+      Projekt portable — działa po cloneowaniu na inną maszynę bez agal/skills_dir.
 
     Legacy flat .md w obu trybach: dest_dir/<stem>/SKILL.md.
 
@@ -479,13 +479,13 @@ def _mark_as_managed(target_dir: Path, preset_name: str, copy: bool = False) -> 
     for skill_subdir in SKILL_DIRS:
         d = target_dir / skill_subdir
         if d.exists():
-            (d / AGL_MARKER_FILE).write_text(f"preset:{preset_name}\nmode:{mode}\n")
+            (d / AGAL_MARKER_FILE).write_text(f"preset:{preset_name}\nmode:{mode}\n")
 
 
 def _is_managed(target_dir: Path) -> tuple[str, str] | None:
-    """Zwraca (preset_name, mode) jeśli katalog jest zarządzany przez agl."""
+    """Zwraca (preset_name, mode) jeśli katalog jest zarządzany przez agal."""
     for skill_subdir in SKILL_DIRS:
-        marker = target_dir / skill_subdir / AGL_MARKER_FILE
+        marker = target_dir / skill_subdir / AGAL_MARKER_FILE
         if marker.exists():
             text = marker.read_text()
             m = re.search(r"preset:(.+)", text)
@@ -503,14 +503,14 @@ def _remove_skill_symlinks(target_dir: Path) -> None:
         d = target_dir / skill_subdir
         if not d.exists():
             continue
-        if not (d / AGL_MARKER_FILE).exists():
-            print(f"  ⏭️   {d} — nie zarządzany przez agl, pomijam")
+        if not (d / AGAL_MARKER_FILE).exists():
+            print(f"  ⏭️   {d} — nie zarządzany przez agal, pomijam")
             continue
         shutil.rmtree(d)
         removed += 1
         print(f"  🧹  Usunięto {d}")
     if removed == 0:
-        print("  Nic do usunięcia — brak katalogów zarządzanych przez agl.")
+        print("  Nic do usunięcia — brak katalogów zarządzanych przez agal.")
 
 # ── Pliki kontekstowe (coding guidelines) ─────────────────────────────────────
 
@@ -519,8 +519,8 @@ def _place_context_file(target_dir: Path, context_path: Path,
     """
     Tworzy AGENTS.md + CLAUDE/GEMINI/KIMI.md w root projektu (symlink lub copy).
 
-    Nie nadpisuje istniejących plików których agl nie utworzył (chroni
-    własne CLAUDE.md usera). Lista utworzonych nazw idzie do .agl_context.
+    Nie nadpisuje istniejących plików których agal nie utworzył (chroni
+    własne CLAUDE.md usera). Lista utworzonych nazw idzie do .agal_context.
     Zwraca listę pominiętych nazw (już istnieją, nie nasze).
     """
     src = context_path.expanduser()
@@ -528,7 +528,7 @@ def _place_context_file(target_dir: Path, context_path: Path,
         print(f"  ⚠️   context_file nie istnieje: {src} — pomijam guidelines")
         return []
 
-    marker = target_dir / AGL_CONTEXT_MARKER
+    marker = target_dir / AGAL_CONTEXT_MARKER
     prev = set(marker.read_text().split()) if marker.exists() else set()
 
     created, skipped = [], []
@@ -551,7 +551,7 @@ def _place_context_file(target_dir: Path, context_path: Path,
 
 
 def _remove_context_file(target_dir: Path) -> None:
-    marker = target_dir / AGL_CONTEXT_MARKER
+    marker = target_dir / AGAL_CONTEXT_MARKER
     if not marker.exists():
         return
     for fname in marker.read_text().split():
@@ -593,7 +593,7 @@ def prepare(preset_name: str, config: dict, target_dir: Path | None = None,
         if placed:
             print(f"  📄  Guidelines: {', '.join(placed)}")
         if skipped:
-            print(f"  ⏭️   Pominięto (istniejące, nie agl): {', '.join(skipped)}")
+            print(f"  ⏭️   Pominięto (istniejące, nie agal): {', '.join(skipped)}")
 
     if missing:
         print(f"  ⚠️   Brakujące pliki: {', '.join(missing)}")
@@ -602,7 +602,7 @@ def prepare(preset_name: str, config: dict, target_dir: Path | None = None,
     for skill_subdir in SKILL_DIRS:
         d = target / skill_subdir
         if d.exists():
-            n = sum(1 for p in d.iterdir() if p.name != AGL_MARKER_FILE)
+            n = sum(1 for p in d.iterdir() if p.name != AGAL_MARKER_FILE)
             print(f"       {d.relative_to(target)}  ({n} skilli)")
 
     print(f"""
@@ -613,14 +613,14 @@ def prepare(preset_name: str, config: dict, target_dir: Path | None = None,
   Agenci wczytują tylko nazwy skilli na start.
   Pełna treść — tylko gdy pasuje do zadania.
 
-  Zmień preset : agl --prepare <inny>
-  Usuń symlinki: agl --unprepare
+  Zmień preset : agal --prepare <inny>
+  Usuń symlinki: agal --unprepare
 """)
 
 
 def unprepare(config: dict, target_dir: Path | None = None) -> None:
     target = (target_dir or Path.cwd()).resolve()
-    print(f"\n🧹  Usuwam symlinki agl z {target}\n")
+    print(f"\n🧹  Usuwam symlinki agal z {target}\n")
     _remove_skill_symlinks(target)
     _remove_context_file(target)
     print()
@@ -632,12 +632,12 @@ def show_status(config: dict, target_dir: Path | None = None) -> None:
 
     if not info:
         print(f"\n  Brak aktywnego presetu w {target}")
-        print(f"  Użyj: agl --prepare <preset>\n")
+        print(f"  Użyj: agal --prepare <preset>\n")
         return
 
     preset, mode = info
     print(f"\n  Aktywny preset: {preset}  [{mode}]  ({target})\n")
-    ctx_marker = target / AGL_CONTEXT_MARKER
+    ctx_marker = target / AGAL_CONTEXT_MARKER
     if ctx_marker.exists():
         ctx_files = ctx_marker.read_text().split()
         if ctx_files:
@@ -648,7 +648,7 @@ def show_status(config: dict, target_dir: Path | None = None) -> None:
             continue
         names = sorted(
             p.name for p in d.iterdir()
-            if p.name != AGL_MARKER_FILE and (p.is_symlink() or p.is_dir())
+            if p.name != AGAL_MARKER_FILE and (p.is_symlink() or p.is_dir())
         )
         print(f"  {skill_subdir}/  ({len(names)} skilli)")
         for name in names:
@@ -700,7 +700,7 @@ def main() -> None:
     config = load_config()
 
     parser = argparse.ArgumentParser(
-        description="agl — Agent Launch z presetami skilli",
+        description="agal — Agent Agnostic Launch z presetami skilli",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -713,7 +713,7 @@ def main() -> None:
     parser.add_argument("--prepare",   "-p", metavar="PRESET",
                         help="Utwórz symlinki w cwd (tryb emdash/multi-CLI)")
     parser.add_argument("--unprepare", "-u", action="store_true",
-                        help="Usuń symlinki zarządzane przez agl z cwd")
+                        help="Usuń symlinki zarządzane przez agal z cwd")
     parser.add_argument("--status",    "-s", action="store_true",
                         help="Pokaż aktywny preset w cwd")
     parser.add_argument("--check",     "-k", action="store_true",
@@ -744,7 +744,7 @@ def main() -> None:
     if not preset_name:
         presets = sorted(p.stem for p in PRESETS_DIR.glob("*.yaml"))
         if not presets:
-            print("Brak presetów. Utwórz pierwszy: agl --new <nazwa>")
+            print("Brak presetów. Utwórz pierwszy: agal --new <nazwa>")
             sys.exit(1)
         preset_name = pick_one(presets, "Preset")
         if not preset_name: sys.exit(0)
