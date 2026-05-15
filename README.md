@@ -47,7 +47,6 @@ clone any of them as a starting library:
 | [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents) | MIT |
 | [obra/superpowers](https://github.com/obra/superpowers) | MIT |
 | [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | MIT |
-| [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) | **No license** — all rights reserved by author; not redistributed here, reference only |
 
 Set the path after install:
 
@@ -192,5 +191,4 @@ agal <preset> <cli>   run directly
 
 MIT — see [LICENSE](LICENSE). Covers this repo's own content only (tool,
 presets, guidelines). The skill library is not bundled; third-party skills are
-governed by their own upstream licenses — see the table above (mostly MIT;
-`andrej-karpathy-skills` is unlicensed and referenced only, not redistributed).
+governed by their own upstream MIT licenses — see the table above.
