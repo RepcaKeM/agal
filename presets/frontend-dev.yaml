@@ -1,0 +1,14 @@
+name: frontend-dev
+description: UI implementacja. React/Vue/Angular, Laravel/Livewire, CSS, perf.
+notes: |
+  Łącz z dev-workflow-core. ui-designer/ux-architect = source of truth dla layoutu.
+skills:
+  - engineering-frontend-developer
+  - engineering-senior-developer
+  - engineering-code-reviewer
+  - engineering-minimal-change-engineer
+  - engineering-technical-writer
+  - design-ui-designer
+  - design-ux-architect
+  - test-driven-development
+  - systematic-debugging

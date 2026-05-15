@@ -1,0 +1,9 @@
+name: devops-sre
+description: CI/CD, infra automation, reliability, cost optimization.
+notes: |
+  Włącz workflow-optimizer dla auditu pipelinów.
+skills:
+  - engineering-devops-automator
+  - engineering-git-workflow-master
+  - support-infrastructure-maintainer
+  - testing-workflow-optimizer

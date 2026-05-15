@@ -1,0 +1,9 @@
+name: security-audit
+description: Threat modeling, vuln assessment, secure code review, detection rules.
+notes: |
+  Read-only audit mode. Findings → severity + fix. Bez deployowania zmian bez zgody.
+skills:
+  - engineering-security-engineer
+  - engineering-threat-detection-engineer
+  - engineering-code-reviewer
+  - support-infrastructure-maintainer

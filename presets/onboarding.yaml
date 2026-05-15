@@ -1,0 +1,9 @@
+name: onboarding
+description: Nowy dev wchodzi w nieznany repo. Mapowanie kodu, fakty z source.
+notes: |
+  Read-first. Output = map + facts, nie domysły.
+skills:
+  - engineering-codebase-onboarding-engineer
+  - engineering-software-architect
+  - engineering-technical-writer
+  - engineering-git-workflow-master

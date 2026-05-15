@@ -1,0 +1,17 @@
+name: dev-workflow-core
+description: Bazowy meta-preset. Zawsze ładuj jako pierwszy. Planowanie, review, git, brainstorm, super-skille.
+notes: |
+  Fundament dla każdej innej sesji. Łącz z presetem domenowym (backend-dev, frontend-dev itd.).
+skills:
+  - brainstorming
+  - writing-plans
+  - executing-plans
+  - subagent-driven-development
+  - dispatching-parallel-agents
+  - using-git-worktrees
+  - finishing-a-development-branch
+  - requesting-code-review
+  - receiving-code-review
+  - using-superpowers
+  - writing-skills
+  - verification-before-completion

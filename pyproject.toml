@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agl-agent-launch"
+version = "2.0.0"
+description = "Agent Launch — per-project skill presets for Claude Code, Gemini CLI and Kimi CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Kacper Baszczak", email = "baszczkacper@gmail.com" }]
+keywords = ["claude", "gemini", "kimi", "agent", "skills", "cli", "llm"]
+dependencies = ["pyyaml>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/baszczkacper/agl"
+
+[project.scripts]
+agl = "agl:main"
+
+[tool.setuptools]
+py-modules = ["agl"]

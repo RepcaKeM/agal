@@ -1,0 +1,9 @@
+name: ai-ml
+description: ML pipelines, modele produkcyjne, feature engineering, AI features.
+notes: |
+  Backend-architect dla integracji z resztą systemu. Database-optimizer dla feature stores.
+skills:
+  - engineering-ai-engineer
+  - engineering-data-engineer
+  - engineering-database-optimizer
+  - engineering-backend-architect

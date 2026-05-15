@@ -1,0 +1,16 @@
+name: backend-dev
+description: API, baza danych, infra. Node/Python/Go backend, microservices, secure-by-default.
+notes: |
+  Łącz z dev-workflow-core. Pytaj przed dodaniem zależności.
+skills:
+  - engineering-backend-architect
+  - engineering-database-optimizer
+  - engineering-data-engineer
+  - engineering-devops-automator
+  - engineering-security-engineer
+  - engineering-software-architect
+  - engineering-code-reviewer
+  - engineering-minimal-change-engineer
+  - engineering-git-workflow-master
+  - test-driven-development
+  - systematic-debugging
