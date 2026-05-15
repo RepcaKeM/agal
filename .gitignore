@@ -15,7 +15,6 @@ venv/
 
 # Skill library — NOT bundled, user supplies (see README "Skills")
 Skills/
-karpathy-guidelines/
 
 # Repo-local dogfooding symlinks (agl generates these per-project)
 /CLAUDE.md
