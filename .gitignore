@@ -24,3 +24,6 @@ Skills/
 # Local config
 .agal/
 *.local
+
+# Original skills
+.github_original/
