@@ -2,9 +2,13 @@ name: pm-ops
 description: Task breakdown, eksperymenty, workflow design, orkiestracja agentów.
 notes: |
   Dla project managera prowadzącego sprint/release/eksperyment.
+skill_triggers: |
+  project-manager-senior: task breakdown, sprint planning, scope tracking
+  experiment-tracker: A/B test design, experiment lifecycle, data-driven decisions
+  workflow-architect: workflow mapping, handoff specs, agent pipeline design
+  agents-orchestrator: multi-agent coordination, pipeline orchestration
 skills:
   - project-manager-senior
   - project-management-experiment-tracker
   - specialized-workflow-architect
-  - testing-workflow-optimizer
   - agents-orchestrator

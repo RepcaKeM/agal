@@ -2,6 +2,11 @@ name: sales-ops
 description: Pre-sales, prospecting, demo eng, POC scoping, sales data extraction.
 notes: |
   B2B oriented. Łącz z behavioral-nudge-engine dla copy psychology.
+skill_triggers: |
+  sales-engineer: technical discovery, demo scoping, POC plans, competitive battlecards
+  sales-outreach: cold emails, follow-ups, proposals, objection handling
+  sales-data-extraction-agent: parsing MTD/YTD from Excel reports, internal dashboards
+  behavioral-nudge-engine: copy psychology, CTA design, persuasion patterns
 skills:
   - sales-engineer
   - sales-outreach

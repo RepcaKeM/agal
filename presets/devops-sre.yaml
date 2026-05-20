@@ -1,9 +1,12 @@
 name: devops-sre
 description: CI/CD, infra automation, reliability, cost optimization.
 notes: |
-  Włącz workflow-optimizer dla auditu pipelinów.
+  Fokus na automatyzację i reliability. Git-workflow-master do auditu branching strategy.
+skill_triggers: |
+  devops-automator: CI/CD setup, IaC, cloud ops, deployment automation
+  git-workflow-master: branching strategy, commit hygiene, merge conflict resolution
+  infrastructure-maintainer: reliability issues, monitoring, incident response
 skills:
   - engineering-devops-automator
   - engineering-git-workflow-master
   - support-infrastructure-maintainer
-  - testing-workflow-optimizer

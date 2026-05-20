@@ -2,6 +2,16 @@ name: backend-dev
 description: API, baza danych, infra. Node/Python/Go backend, microservices, secure-by-default.
 notes: |
   Łącz z dev-workflow-core. Pytaj przed dodaniem zależności.
+skill_triggers: |
+  backend-architect: API design, service boundaries, system architecture decisions
+  database-optimizer: slow queries, schema design, migration planning, index strategy
+  data-engineer: ETL pipelines, data ingestion, streaming jobs
+  devops-automator: CI/CD setup, IaC, deployment automation
+  security-engineer: auth flows, input validation, secret management, threat modeling
+  software-architect: technology choices, module boundaries, architectural ADRs
+  minimal-change-engineer: any fix risking scope creep — invoke to enforce diff discipline
+  test-driven-development: before writing any implementation code
+  systematic-debugging: any bug or unexpected behavior before proposing a fix
 skills:
   - engineering-backend-architect
   - engineering-database-optimizer
