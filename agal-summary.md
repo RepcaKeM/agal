@@ -131,14 +131,9 @@ Disable: `core_preset: null`.
 curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bash
 ```
 
-Installs the CLI via `pipx` / `uv` / a managed venv (no system-Python pollution),
-links `~/.agal/presets` to the repo presets, and writes a starter config. Direct
-alternative: `pipx install git+https://github.com/RepcaKeM/agal.git`.
+Then `agal --config` to view `skills_dir`. `fzf` recommended for interactive pickers.
 
-Then `agal --config` to set `skills_dir`. `fzf` recommended for interactive pickers.
-
-The skill library is **not bundled** — see README → "Skills are NOT bundled" for
-MIT-licensed source collections.
+The skill library is **bundled** in the repository under `Skills/` and configured automatically by the installer.
 
 ---
 

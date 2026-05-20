@@ -13,8 +13,8 @@ venv/
 .agal_managed
 .agal_context
 
-# Skill library — NOT bundled, user supplies (see README "Skills")
-Skills/
+# Skill library — Bundled in the repository
+# Skills/
 
 # Repo-local dogfooding symlinks (agal generates these per-project)
 /CLAUDE.md

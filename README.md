@@ -33,25 +33,16 @@ Optional but recommended: `fzf` (interactive preset/skill picker).
 
 ---
 
-## Skills are NOT bundled
+## Skills are bundled (Batteries Included)
 
-This repo ships the **tool, the presets, and the coding guidelines** — *not* the
-skill library itself. You supply your own `skills_dir`. Presets reference skills
-by directory name; point `skills_dir` at any Anthropic-standard skill collection.
+This repo ships with a curated library of **modified, high-quality agent skills** under the `Skills/` directory (sourced from projects like `superpowers`, `agency-agents` and `caveman` under MIT license).
 
-The presets here were curated against skills sourced from these projects —
-clone any of them as a starting library:
+By default, the installer automatically configures `agal` to use these bundled skills. You don't need to download or configure any external skill library.
 
-| Source | License |
-|---|---|
-| [msitarzewski/agency-agents](https://github.com/msitarzewski/agency-agents) | MIT |
-| [obra/superpowers](https://github.com/obra/superpowers) | MIT |
-| [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman) | MIT |
-
-Set the path after install:
+If you want to view or customize the configuration:
 
 ```bash
-agal --config        # set skills_dir: /path/to/your/skills
+agal --config        # view or set custom skills_dir
 agal --check         # verify every SKILL.md has name + description frontmatter
 ```
 

@@ -67,9 +67,18 @@ AGAL_MARKER_FILE = ".agal_managed"   # marker file in each directory created by 
 CONTEXT_FILENAMES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "KIMI.md"]
 AGAL_CONTEXT_MARKER = ".agal_context"   # list of context files created by agal
 
+# Locate default skills directory: prefer bundled Skills/ if present, fallback to ~/.agal/src/Skills or ~/my-skills
+script_dir = Path(__file__).resolve().parent
+if (script_dir / "Skills").is_dir():
+    DEFAULT_SKILLS_DIR = (script_dir / "Skills").resolve()
+elif (Path.home() / ".agal" / "src" / "Skills").is_dir():
+    DEFAULT_SKILLS_DIR = (Path.home() / ".agal" / "src" / "Skills").resolve()
+else:
+    DEFAULT_SKILLS_DIR = Path.home() / "my-skills"
+
 DEFAULT_CONFIG = {
     # Directory containing your library of 200+ .md skill files
-    "skills_dir": str(Path.home() / "my-skills"),
+    "skills_dir": str(DEFAULT_SKILLS_DIR),
     # CLI binary names
     "clis": {
         "claude": "claude",
@@ -102,6 +111,10 @@ def load_config() -> dict:
     user = yaml.safe_load(CONFIG_FILE.read_text()) or {}
     # Merge with DEFAULT_CONFIG — missing keys get defaults (e.g. core_preset)
     merged = {**DEFAULT_CONFIG, **user}
+    # If the configured skills_dir doesn't exist but the bundled one does, auto-fallback
+    skills_path = Path(merged.get("skills_dir", "")).expanduser()
+    if not skills_path.is_dir() and DEFAULT_SKILLS_DIR.is_dir():
+        merged["skills_dir"] = str(DEFAULT_SKILLS_DIR)
     # presets_dir from config overrides the default (CONFIG_DIR/presets)
     if merged.get("presets_dir"):
         PRESETS_DIR = Path(merged["presets_dir"]).expanduser()
@@ -276,7 +289,7 @@ def new_preset(name: str, config: dict) -> None:
     desc  = input("Description (optional): ").strip()
     notes = input("Notes/instructions (optional): ").strip()
     print()
-    selected = pick_skills_multi(config.get("skills_dir", "~/my-skills"))
+    selected = pick_skills_multi(config.get("skills_dir", str(DEFAULT_SKILLS_DIR)))
     if not selected:
         print("Nothing selected.")
         return
@@ -291,7 +304,7 @@ def validate_preset(name: str, config: dict) -> None:
     """Checks that all skills in the preset (after resolve) exist and have frontmatter."""
     preset = load_preset(name)
     skills, core_added = resolve_skills(preset, name, config)
-    skills_dir = Path(config.get("skills_dir", "~/my-skills")).expanduser()
+    skills_dir = Path(config.get("skills_dir", str(DEFAULT_SKILLS_DIR))).expanduser()
 
     own = len(skills) - core_added
     print(f"\n🔎  Validating '{name}': {len(skills)} skills ({own} own + {core_added} core)\n")
@@ -358,7 +371,7 @@ def _has_frontmatter(text: str) -> tuple[bool, bool]:
 
 
 def check_skills(config: dict) -> None:
-    skills_dir = Path(config.get("skills_dir", "~/my-skills")).expanduser()
+    skills_dir = Path(config.get("skills_dir", str(DEFAULT_SKILLS_DIR))).expanduser()
     # Subdirs with SKILL.md + flat .md (legacy)
     files = []
     for d in sorted(skills_dir.iterdir()) if skills_dir.exists() else []:
@@ -567,7 +580,7 @@ def prepare(preset_name: str, config: dict, target_dir: Path | None = None,
             copy: bool = False) -> None:
     target     = (target_dir or Path.cwd()).resolve()
     preset     = load_preset(preset_name)
-    skills_dir = Path(config.get("skills_dir", "~/my-skills")).expanduser()
+    skills_dir = Path(config.get("skills_dir", str(DEFAULT_SKILLS_DIR))).expanduser()
     skills, core_added = resolve_skills(preset, preset_name, config)
     own = len(skills) - core_added
     mode_label = "📋 copy (remote/portable)" if copy else "🔗 symlink"
@@ -671,7 +684,7 @@ def launch(preset_name: str, cli_name: str, config: dict, copy: bool = False) ->
 
     preset = load_preset(preset_name)
     skills, core_added = resolve_skills(preset, preset_name, config)
-    skills_dir = Path(config.get("skills_dir", "~/my-skills")).expanduser()
+    skills_dir = Path(config.get("skills_dir", str(DEFAULT_SKILLS_DIR))).expanduser()
     target = Path.cwd()
     own = len(skills) - core_added
 

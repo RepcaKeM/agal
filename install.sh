@@ -66,9 +66,13 @@ say "Presets linked: $AGAL_HOME/presets → $SRC_DIR/presets"
 CFG="$AGAL_HOME/config.yaml"
 if [ ! -f "$CFG" ]; then
   SKILLS_DIR="${AGAL_SKILLS_DIR:-}"
-  if [ -z "$SKILLS_DIR" ] && [ -t 0 ]; then
-    printf 'Path to your skills library (dir of <skill>/SKILL.md): '
-    read -r SKILLS_DIR
+  if [ -z "$SKILLS_DIR" ]; then
+    if [ -d "$SRC_DIR/Skills" ]; then
+      SKILLS_DIR="$SRC_DIR/Skills"
+    elif [ -t 0 ]; then
+      printf 'Path to your skills library (dir of <skill>/SKILL.md): '
+      read -r SKILLS_DIR
+    fi
   fi
   SKILLS_DIR="${SKILLS_DIR:-$HOME/my-skills}"
   cat > "$CFG" <<EOF
@@ -90,6 +94,7 @@ cat <<EOF
    agal --prepare backend-dev  set up a project
    agal --help                 all commands
 
-Note: the skill library is NOT bundled. Point skills_dir in $CFG
-at your own collection (see README → "Skills" for sources).
+Note: the skill library is bundled and configured automatically at:
+      $SKILLS_DIR
+      You can manage it or set a custom path in $CFG.
 EOF
