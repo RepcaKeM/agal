@@ -1,15 +1,7 @@
 name: frontend-dev
-description: UI implementacja. React/Vue/Angular, Laravel/Livewire, CSS, perf.
+description: UI implementacja. React/Vue/Angular, CSS, performance.
 notes: |
   Łącz z dev-workflow-core. ui-designer/ux-architect = source of truth dla layoutu.
-skill_triggers: |
-  frontend-developer: UI components, state management, API integration, perf optimization
-  code-reviewer: PR review, pre-merge quality check
-  minimal-change-engineer: any fix risking scope creep
-  ui-designer: component design, layout, color/spacing decisions
-  ux-architect: IA, navigation structure, CSS system guidance
-  test-driven-development: before writing any implementation code
-  systematic-debugging: any bug or unexpected behavior before proposing a fix
 skills:
   - engineering-frontend-developer
   - engineering-code-reviewer

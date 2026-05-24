@@ -2,13 +2,6 @@ name: data-science
 description: Analiza danych, data engineering, wizualizacja i eksperymentowanie.
 notes: |
   Fokus na czystość danych, optymalizację zapytań i czytelną komunikację wizualną wyników.
-skill_triggers: |
-  data-engineer: data pipeline architecture, ETL, streaming
-  database-optimizer: query optimization, schema tuning for analytics
-  ai-engineer: model experiments, statistical analysis, ML feature work
-  experiment-tracker: A/B test design, hypothesis tracking, go/no-go decisions
-  visual-storyteller: charts, infographics, communicating results visually
-  inclusive-visuals: any visual output requiring representation accuracy
 skills:
   - engineering-data-engineer
   - engineering-database-optimizer

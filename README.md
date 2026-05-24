@@ -99,16 +99,16 @@ Only the preset's set is visible — not a global 200+.
 | `ui-ux` | UI design + UX architecture |
 | `wireframing` | Discovery, low-fi, user flows |
 | `sales-driven-page` | Landing pages, conversion copy |
-| `ai-ml` | LLM, RAG, embeddings, evals |
+| `ai-ml` | ML pipelines, production models, feature engineering, AI features |
 | `data-science` | Analysis, modeling, notebooks |
 | `security-audit` | Threat modeling, code review |
-| `devops-sre` | CI/CD, infra, observability |
+| `devops-sre` | CI/CD, infra automation, reliability |
 | `product-discovery` | User research, behavioral science |
 | `pm-ops` | Project management, experiment tracking |
 | `content-marketing` | Content strategy, SEO, long form |
 | `sales-ops` | Outreach, data extraction, sales eng |
 | `onboarding` | Entering an unfamiliar codebase |
-| `inclusive-visuals` | Accessibility, brand, visual storytelling |
+| `inclusive-visuals` | Bias-free AI image/video generation, culturally accurate |
 
 ---
 

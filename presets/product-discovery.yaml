@@ -3,12 +3,6 @@ description: Strategy, trend research, user research, hypotheses, behavioral pat
 notes: |
   Pre-build phase. Output = validated problem + initial spec.
   academic-psychologist dla głębszej analizy motywacji/persona.
-skill_triggers: |
-  product-manager: requirements, feature prioritization, stakeholder specs
-  trend-researcher: market analysis, competitor mapping, opportunity assessment
-  ux-researcher: usability research, persona development, behavioral analysis
-  experiment-tracker: hypothesis design, validation criteria, experiment scope
-  academic-psychologist: deep motivation analysis, psychologically grounded personas
 skills:
   - product-manager
   - product-trend-researcher
