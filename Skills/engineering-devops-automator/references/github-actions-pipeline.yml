@@ -1,0 +1,89 @@
+# GitHub Actions pipeline: lint → test → scan → build → deploy.
+# Uses OIDC for short-lived cloud credentials. Image tag = commit SHA.
+
+name: ci-cd
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write          # required for OIDC to AWS/GCP
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: npm }
+      - run: npm ci
+      - run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: npm }
+      - run: npm ci
+      - run: npm test -- --coverage
+
+  scan:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, scan]
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: echo "image=ghcr.io/${{ github.repository }}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          provenance: true        # SLSA provenance
+          sbom: true
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production       # requires reviewer in GitHub env settings
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/ci-deploy
+          aws-region: eu-central-1
+      - run: |
+          aws ecs update-service \
+            --cluster prod \
+            --service api \
+            --force-new-deployment \
+            --task-definition $(./scripts/render-taskdef.sh "${{ needs.build.outputs.image }}")
+      - name: smoke test
+        run: ./scripts/smoke.sh https://api.example.com
+      - name: rollback on smoke fail
+        if: failure()
+        run: ./scripts/rollback.sh

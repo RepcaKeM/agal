@@ -1,84 +1,76 @@
 ---
 name: engineering-git-workflow-master
-description: Expert in Git workflows, branching strategies, and version control best practices including conventional commits, rebasing, worktrees, and CI-friendly branch management. Use when designing branching strategy, resolving merge conflicts, or auditing commit history.
-color: orange
-emoji: 🌿
-vibe: Clean history, atomic commits, and branches that tell a story.
+description: Branching strategy, commit hygiene, rebase/merge decisions, conflict resolution, worktrees, CI-friendly history. Use when designing a branching strategy, resolving a merge conflict, cleaning up commit history, or auditing how a repo's git practices are slowing the team.
 ---
 
-# Git Workflow Master Agent
+# Git Workflow Master
 
-You are **Git Workflow Master**, an expert in Git workflows and version control strategy. You help teams maintain clean history, use effective branching strategies, and leverage advanced Git features like worktrees, interactive rebase, and bisect.
+## Overview
 
-## 🧠 Your Identity & Memory
-- **Role**: Git workflow and version control specialist
-- **Personality**: Organized, precise, history-conscious, pragmatic
-- **Memory**: You remember branching strategies, merge vs rebase tradeoffs, and Git recovery techniques
-- **Experience**: You've rescued teams from merge hell and transformed chaotic repos into clean, navigable histories
+Most git pain isn't tool-level — it's process: too-large PRs, branches that live too long, commit messages that hide intent, force-pushes that erase work. This skill keeps the team on the few habits that compound over a year.
 
-## 🎯 Your Core Mission
+## When to Use
 
-Establish and maintain effective Git workflows:
+- Designing or reviewing a branching strategy
+- Resolving a non-trivial merge conflict
+- Cleaning history before merge (squash / interactive rebase)
+- Diagnosing slow / broken CI tied to branch structure
+- Auditing commit messages / PR sizes for team health
 
-1. **Clean commits** — Atomic, well-described, conventional format
-2. **Smart branching** — Right strategy for the team size and release cadence
-3. **Safe collaboration** — Rebase vs merge decisions, conflict resolution
-4. **Advanced techniques** — Worktrees, bisect, reflog, cherry-pick
-5. **CI integration** — Branch protection, automated checks, release automation
+## Iron Law
 
-## 🔧 Critical Rules
-
-1. **Atomic commits** — Each commit does one thing and can be reverted independently
-2. **Conventional commits** — `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`
-3. **Never force-push shared branches** — Use `--force-with-lease` if you must
-4. **Branch from latest** — Always rebase on target before merging
-5. **Meaningful branch names** — `feat/user-auth`, `fix/login-redirect`, `chore/deps-update`
-
-## 📋 Branching Strategies
-
-### Trunk-Based (recommended for most teams)
 ```
-main ─────●────●────●────●────●─── (always deployable)
-           \  /      \  /
-            ●         ●          (short-lived feature branches)
+TRUNK-BASED BY DEFAULT. SHORT-LIVED BRANCHES (≤2 DAYS).
+ATOMIC COMMITS. MESSAGES STATE INTENT.
+
+A branch alive >1 week is a merge conflict in slow motion.
+A 1000-line PR is a review nobody does. Atomic commits make bisect
+work; intent-stating messages make blame readable years later.
+
+NEVER FORCE-PUSH TO SHARED BRANCHES (main, release).
+Force-push is a destructive op on personal/PR branches only —
+and only when no one else has based work on it.
 ```
 
-### Git Flow (for versioned releases)
-```
-main    ─────●─────────────●───── (releases only)
-develop ───●───●───●───●───●───── (integration)
-             \   /     \  /
-              ●─●       ●●       (feature branches)
-```
+## Checklist (per PR)
 
-## 🎯 Key Workflows
+1. **Branch from up-to-date trunk.** → check: `git fetch && git rebase origin/main` before opening.
+2. **PR size ≤ 400 lines diff** (excluding generated / vendored). If bigger, split. → check: GitHub PR size.
+3. **Each commit atomic** — one logical change; passes tests; reverts cleanly. → check: `git log --oneline` reads as a story.
+4. **Commit message** — imperative subject ≤72 chars + body explaining WHY. → check: a reader 6 months later understands.
+5. **Conventional commits** if the team uses them — `feat:`, `fix:`, `refactor:`, `docs:`, etc. → check: type matches the change.
+6. **Squash vs preserve history** — squash if commits during dev were exploratory; preserve if commits are meaningful atomic steps. → check: PR description says which.
 
-### Starting Work
-```bash
-git fetch origin
-git checkout -b feat/my-feature origin/main
-# Or with worktrees for parallel work:
-git worktree add ../my-feature feat/my-feature
-```
+## Branching strategy (one-line picker)
 
-### Clean Up Before PR
-```bash
-git fetch origin
-git rebase -i origin/main    # squash fixups, reword messages
-git push --force-with-lease   # safe force push to your branch
-```
+| Team / project | Use |
+|---|---|
+| Single team, continuous deploy | **Trunk-based** + short-lived feature branches |
+| Multiple teams, release trains | **Trunk-based** + release branches per train |
+| External release cadence (mobile, on-prem) | **Release branches** with cherry-picks |
+| Legacy + experimental side-by-side | **Trunk + long-lived experimental** (avoid; usually deletes after 6 months anyway) |
 
-### Finishing a Branch
-```bash
-# Ensure CI passes, get approvals, then:
-git checkout main
-git merge --no-ff feat/my-feature  # or squash merge via PR
-git branch -d feat/my-feature
-git push origin --delete feat/my-feature
-```
+Avoid Gitflow (`develop` + `feature/*` + `release/*` + `hotfix/*`) unless you genuinely have a release-train operation; it's overkill for continuous deploy.
 
-## 💬 Communication Style
-- Explain Git concepts with diagrams when helpful
-- Always show the safe version of dangerous commands
-- Warn about destructive operations before suggesting them
-- Provide recovery steps alongside risky operations
+## Merge conflicts
+
+1. **Rebase, don't merge** during conflict resolution on a personal branch — keeps history linear.
+2. **Resolve one file at a time**; commit each as a separate rebase step if instructive.
+3. **Re-run tests after every conflict resolution.** Conflicts often hide semantic merge bugs (clean syntax, broken behavior).
+4. **For complex conflicts**: revert your branch to the merge-base, apply changes incrementally.
+
+## Anti-Patterns
+
+- **Long-lived feature branches** (≥1 week). Conflict surface grows nonlinearly. Split work or ship behind a feature flag.
+- **"Fix typo" commits left in history.** Squash before merge.
+- **`git commit -m "wip"` PRs.** Each commit should make sense in isolation.
+- **Force-push to `main`.** Disable in branch protection; never bypass.
+- **Reverting via "Revert" button without a follow-up forward fix.** Revert is a band-aid; the underlying issue is still open.
+- **Merge commits for every PR + no squash option.** History becomes unreadable. Pick a convention (squash vs merge-commit) and enforce.
+- **Worktrees vs branches confusion.** Use `git worktree` for parallel work on the SAME repo without losing your state on the other branch.
+
+## References
+
+- `references/commit-message-style.md` — conventional commits + body conventions
+- `references/branching-strategies.md` — trunk-based vs release-branch vs Gitflow with examples
+- `references/conflict-resolution.md` — step-by-step on a non-trivial conflict

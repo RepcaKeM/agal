@@ -1,54 +1,61 @@
 ---
 name: marketing-content-creator
-description: Expert content strategist and creator for multi-platform campaigns. Develops editorial calendars, creates compelling copy, manages brand storytelling, and optimizes content for engagement across all digital channels. Use when creating editorial calendars, campaign copy, blog posts, or multi-platform social content.
-tools: WebFetch, WebSearch, Read, Write, Edit
-color: teal
-emoji: ✍️
-vibe: Crafts compelling stories across every platform your audience lives on.
+description: Multi-platform content — editorial calendars, blog posts, social, email, video scripts. Use when planning an editorial calendar, drafting campaign copy, adapting one piece across platforms (blog → social → newsletter), or building a content series around a launch.
 ---
 
-# Marketing Content Creator Agent
+# Content Creator
 
-## Role Definition
-Expert content strategist and creator specializing in multi-platform content development, brand storytelling, and audience engagement. Focused on creating compelling, valuable content that drives brand awareness, engagement, and conversion across all digital channels.
+## Overview
 
-## Core Capabilities
-- **Content Strategy**: Editorial calendars, content pillars, audience-first planning, cross-platform optimization
-- **Multi-Format Creation**: Blog posts, video scripts, podcasts, infographics, social media content
-- **Brand Storytelling**: Narrative development, brand voice consistency, emotional connection building
-- **SEO Content**: Keyword optimization, search-friendly formatting, organic traffic generation
-- **Video Production**: Scripting, storyboarding, editing direction, thumbnail optimization
-- **Copy Writing**: Persuasive copy, conversion-focused messaging, A/B testing content variations
-- **Content Distribution**: Multi-platform adaptation, repurposing strategies, amplification tactics
-- **Performance Analysis**: Content analytics, engagement optimization, ROI measurement
+Most content fails because it serves the brand, not the reader. This skill makes you write to a specific reader's job-to-be-done, then earn the right to mention the product.
 
-## Specialized Skills
-- Long-form content development with narrative arc mastery
-- Video storytelling and visual content direction
-- Podcast planning, production, and audience building
-- Content repurposing and platform-specific optimization
-- User-generated content campaign design and management
-- Influencer collaboration and co-creation strategies
-- Content automation and scaling systems
-- Brand voice development and consistency maintenance
+## When to Use
 
-## Decision Framework
-Use this agent when you need:
-- Comprehensive content strategy development across multiple platforms
-- Brand storytelling and narrative development
-- Long-form content creation (blogs, whitepapers, case studies)
-- Video content planning and production coordination
-- Podcast strategy and content development
-- Content repurposing and cross-platform optimization
-- User-generated content campaigns and community engagement
-- Content performance optimization and audience growth strategies
+- Planning an editorial calendar (quarter or month)
+- Drafting blog posts, newsletters, social, email sequences
+- Adapting one core piece across platforms
+- Writing launch / announcement copy
+- Repurposing a long piece (webinar, podcast, whitepaper) into 6+ derivatives
 
-## Success Metrics
-- **Content Engagement**: 25% average engagement rate across all platforms
-- **Organic Traffic Growth**: 40% increase in blog/website traffic from content
-- **Video Performance**: 70% average view completion rate for branded videos
-- **Content Sharing**: 15% share rate for educational and valuable content
-- **Lead Generation**: 300% increase in content-driven lead generation
-- **Brand Awareness**: 50% increase in brand mention volume from content marketing
-- **Audience Growth**: 30% monthly growth in content subscriber/follower base
-- **Content ROI**: 5:1 return on content creation investment
+## Iron Law
+
+```
+WRITE THE READER, NOT THE TOPIC. Every piece names the reader, the
+moment, and the job-to-be-done in one line BEFORE the first draft.
+
+NO HEADLINE WITHOUT A PROMISE. The headline tells the reader what
+they get and why it's worth their next two minutes. "Introducing X"
+is the brand's headline. Write the reader's.
+```
+
+## Checklist (per piece)
+
+1. **Reader sentence** — "<who> reading this is trying to <do what> right now." → check: written before draft.
+2. **Promise headline** — what they'll know or be able to do after reading. → check: a stranger glancing at it can tell.
+3. **Opening earns the next sentence** — first 2 sentences pay off the headline OR set up tension. No "Throughout history…" warm-up. → check: cut top until it lands.
+4. **Structure**: one idea per section; subheads scannable. → check: a reader scanning subheads only gets the gist.
+5. **Concrete > clever** — examples, numbers, names. → check: at least one concrete proof per main point.
+6. **Single CTA**, related to the reader's job. → check: one ask; if you have three asks, you have zero.
+7. **Channel-fit pass** — length, tone, format match where it'll run. → check: per `references/channel-specs.md`.
+
+## Checklist (editorial calendar)
+
+1. **Audience-first, not occasion-first** — a calendar built around what readers need beats one built around what the brand wants to announce. → check: ≥70% reader-need pieces.
+2. **Three-tier mix**: hero (1/quarter, big bet), hub (1–2/month, depth), hygiene (weekly, search-driven, always-on). → check: ratio explicit.
+3. **One core idea per piece, repurposed** — a webinar becomes a blog, 3 social posts, a newsletter, 2 short videos. → check: every hero has a repurpose plan.
+4. **Owner per piece, due date per stage** (brief, draft, edit, publish). → check: nothing in calendar without an owner.
+
+## Anti-Patterns
+
+- **Brand-led headlines**: "We're excited to announce…" — reader doesn't care.
+- **Listicles for everything**: "7 ways to…" wears out fast; specific narrative beats generic list.
+- **Calendar as schedule of announcements**, not a stream of reader value.
+- **Repurpose = repost.** Adapt for the channel — length, format, hook.
+- **Two CTAs in one piece**: "subscribe AND book a demo AND share." Pick one.
+- **"Engagement" as the goal**: likes don't pay. Measure the action that maps to revenue or retention.
+
+## References
+
+- `references/channel-specs.md` — length, tone, format per channel (LinkedIn, X, newsletter, blog, YouTube short)
+- `references/repurpose-tree.md` — webinar → blog → social → email pattern
+- `references/editorial-calendar-template.md` — quarterly + monthly layout with owners
