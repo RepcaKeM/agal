@@ -527,10 +527,94 @@ def _remove_skill_symlinks(target_dir: Path) -> None:
 
 # ── Context files (coding guidelines) ────────────────────────────────────────
 
+# ── Routing-block (per-preset hints injected into AGENTS.md) ──────────────────
+
+_USE_WHEN_RE = re.compile(
+    r"\bUse(?:\s+this)?\s+(?:when|before|during|after|for)\s+(.+?)(?:\.\s|\.\Z|\Z)",
+    re.IGNORECASE | re.DOTALL,
+)
+_ARTICLE_RE  = re.compile(r"^(a|an|the|or|any)\s+", re.IGNORECASE)
+
+
+def _extract_triggers(skill_md_text: str, max_n: int = 3, max_chars: int = 50) -> str:
+    """Pull 'Use when X, Y, Z' clause from a skill's frontmatter description.
+    Returns pipe-separated triggers (max_n per skill, max_chars per trigger),
+    or '' if not extractable."""
+    if not skill_md_text.startswith("---"):
+        return ""
+    end = skill_md_text.find("\n---", 3)
+    if end == -1:
+        return ""
+    fm = skill_md_text[3:end]
+
+    desc_match = re.search(
+        r'^description:\s*(?:"((?:[^"\\]|\\.)+)"|\'((?:[^\'\\]|\\.)+)\'|(.+?))(?=^\w+:|\Z)',
+        fm, re.MULTILINE | re.DOTALL,
+    )
+    if not desc_match:
+        return ""
+    desc = (desc_match.group(1) or desc_match.group(2) or desc_match.group(3) or "").strip()
+    # Collapse multi-line YAML-folded descriptions.
+    desc = re.sub(r"\s+", " ", desc)
+
+    uw = _USE_WHEN_RE.search(desc)
+    if not uw:
+        return ""
+    clause = uw.group(1).strip().rstrip(".")
+
+    # Split on commas only (preserves "wrong or missing" as one phrase).
+    parts = [p.strip() for p in clause.split(",") if p.strip()]
+    # Drop leading articles / "or " from each item.
+    parts = [_ARTICLE_RE.sub("", p) for p in parts]
+    parts = [p for p in parts if p]
+    # Truncate each trigger to max_chars (cut at last word boundary).
+    def _truncate(s: str) -> str:
+        if len(s) <= max_chars:
+            return s
+        cut = s[:max_chars].rsplit(" ", 1)[0]
+        return cut or s[:max_chars]
+    parts = [_truncate(p) for p in parts]
+    return "|".join(parts[:max_n])
+
+
+def _build_routing_block(skills: list[str], skills_dir: Path) -> tuple[str, int]:
+    """Builds the markdown block appended to AGENTS.md. Returns (block, n_rows)."""
+    rows = []
+    for skill in skills:
+        skill_md = skills_dir / skill / "SKILL.md"
+        if not skill_md.is_file():
+            continue
+        try:
+            triggers = _extract_triggers(skill_md.read_text(encoding="utf-8"))
+        except OSError:
+            triggers = ""
+        if triggers:
+            rows.append(f"{triggers},{skill}")
+    if not rows:
+        return "", 0
+    body = "\n".join(rows)
+    block = (
+        "\n\n<!-- agal:routing — auto-generated per preset; removed by --unprepare -->\n"
+        "## Skill routing (this project)\n\n"
+        "Before answering a non-trivial task, scan the CSV below. If any "
+        "trigger (left of comma, pipe-separated) matches the user's intent, "
+        "invoke that skill via the Skill tool BEFORE responding.\n\n"
+        "```csv\n"
+        f"{body}\n"
+        "```\n"
+        "<!-- agal:routing-end -->\n"
+    )
+    return block, len(rows)
+
+
 def _place_context_file(target_dir: Path, context_path: Path,
-                        copy: bool = False) -> list[str]:
+                        copy: bool = False, routing_block: str = "") -> list[str]:
     """
-    Creates AGENTS.md + CLAUDE/GEMINI/KIMI.md in the project root (symlink or copy).
+    Creates AGENTS.md + CLAUDE/GEMINI/KIMI.md in the project root.
+
+    Default mode: symlink to source. When `routing_block` is non-empty we force
+    a copy (you can't append to a symlink target), so the per-preset routing
+    hints land in the file the agent actually reads.
 
     Does not overwrite existing files that agal did not create (protects the
     user's own CLAUDE.md). The list of created names is written to .agal_context.
@@ -544,6 +628,9 @@ def _place_context_file(target_dir: Path, context_path: Path,
     marker = target_dir / AGAL_CONTEXT_MARKER
     prev = set(marker.read_text().split()) if marker.exists() else set()
 
+    must_copy = copy or bool(routing_block)
+    source_text = src.read_text(encoding="utf-8") if must_copy else None
+
     created, skipped = [], []
     for fname in CONTEXT_FILENAMES:
         dest = target_dir / fname
@@ -553,8 +640,8 @@ def _place_context_file(target_dir: Path, context_path: Path,
             else:
                 skipped.append(fname)      # user's file — leave it alone
                 continue
-        if copy:
-            shutil.copy2(src, dest)
+        if must_copy:
+            dest.write_text(source_text + routing_block, encoding="utf-8")
         else:
             dest.symlink_to(src.resolve())
         created.append(fname)
@@ -601,10 +688,13 @@ def prepare(preset_name: str, config: dict, target_dir: Path | None = None,
 
     ctx = config.get("context_file")
     if ctx:
-        skipped = _place_context_file(target, Path(ctx), copy=copy)
+        routing_block, n_routed = _build_routing_block(skills, skills_dir)
+        skipped = _place_context_file(target, Path(ctx), copy=copy,
+                                      routing_block=routing_block)
         placed = [f for f in CONTEXT_FILENAMES if f not in skipped]
         if placed:
-            print(f"  📄  Guidelines: {', '.join(placed)}")
+            suffix = f" + routing hints for {n_routed}/{len(skills)} skills" if routing_block else ""
+            print(f"  📄  Guidelines: {', '.join(placed)}{suffix}")
         if skipped:
             print(f"  ⏭️   Skipped (existing, not agal's): {', '.join(skipped)}")
 
