@@ -1,8 +1,0 @@
-name: devops-sre
-description: CI/CD, infra automation, reliability.
-notes: |
-  Fokus na automatyzację i reliability. Git-workflow-master do auditu branching strategy.
-skills:
-  - engineering-devops-automator
-  - engineering-git-workflow-master
-  - support-infrastructure-maintainer

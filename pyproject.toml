@@ -4,20 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agal-agent-agnostic-launch"
-version = "2.0.0"
-description = "Agent Agnostic Launch — per-project skill presets for Claude Code, Gemini CLI and Kimi CLI"
+version = "2.1.0"
+description = "Agent Agnostic Launch — per-project and global skill & MCP presets for AI agent CLIs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Kacper Baszczyński", email = "baszczkacper@gmail.com" }]
-keywords = ["claude", "gemini", "kimi", "agent", "skills", "cli", "llm"]
+keywords = ["claude", "gemini", "mcp", "agent", "skills", "cli", "llm"]
 dependencies = ["pyyaml>=6.0"]
 
 [project.urls]
 Homepage = "https://github.com/RepcaKeM/agal"
 
 [project.scripts]
-agal = "agal:main"
+agal = "agal.cli:main"
 
-[tool.setuptools]
-py-modules = ["agal"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agal*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+

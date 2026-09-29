@@ -1,6 +1,6 @@
 # agal — Agent Agnostic Launch
 
-Per-project **skill presets** for **Claude Code**, **Gemini CLI** and **Kimi CLI**.
+Per-project & user-level **skill & MCP presets** for **Claude Code** and **Gemini CLI**.
 
 By default every agent CLI discovers *all* available skills — context noise, weaker
 activation, wasted tokens. `agal` inverts this: you define a **preset** (e.g.
@@ -91,24 +91,33 @@ Only the preset's set is visible — not a global 200+.
 
 ## Presets
 
-| Preset | Use case |
-|---|---|
-| `dev-workflow-core` | Meta — auto-merged into every preset (brainstorm, planning, git, review) |
-| `backend-dev` | Node/Python/Go backend, DB, API |
-| `frontend-dev` | React/Vue/Angular, CSS, perf |
-| `ui-ux` | UI design + UX architecture |
-| `wireframing` | Discovery, low-fi, user flows |
-| `sales-driven-page` | Landing pages, conversion copy |
-| `ai-ml` | ML pipelines, production models, feature engineering, AI features |
-| `data-science` | Analysis, modeling, notebooks |
-| `security-audit` | Threat modeling, code review |
-| `devops-sre` | CI/CD, infra automation, reliability |
-| `product-discovery` | User research, behavioral science |
-| `pm-ops` | Project management, experiment tracking |
-| `content-marketing` | Content strategy, SEO, long form |
-| `sales-ops` | Outreach, data extraction, sales eng |
-| `onboarding` | Entering an unfamiliar codebase |
-| `inclusive-visuals` | Bias-free AI image/video generation, culturally accurate |
+AGAL does not lock you into fixed, bloated bundles. Instead, it provides the tooling to easily compose, manage, and share your own presets combining **Skills** and **MCP servers** from any connected Git sources:
+
+```bash
+# Create a preset interactively (fzf / CLI multi-picker)
+agal preset create my-preset
+
+# List, inspect, and edit presets
+agal preset list
+agal preset info my-preset
+agal preset edit my-preset    # opens in $EDITOR
+agal preset delete my-preset
+```
+
+A preset YAML file (`~/.agal/presets/<name>.yaml`) looks like this:
+
+```yaml
+name: fullstack-dev
+description: Fullstack web development workflow
+skills:
+  - systematic-debugging
+  - test-driven-development
+  - writing-plans
+mcp:
+  - postgresql
+```
+
+Presets can optionally inherit a meta-preset (configured via `core_preset` in `config.yaml`). If configured, core skills and MCP servers are automatically prepended and deduplicated.
 
 ---
 
@@ -135,12 +144,12 @@ mkdir -p .agal
 cat > .agal/config.yaml <<EOF
 skills_dir:   /opt/skills
 presets_dir:  /opt/agal/presets
-core_preset:  dev-workflow-core
+core_preset:  null           # optional meta-preset to auto-merge
 context_file: /opt/agal/AGENTS.md
 EOF
 
 export AGAL_CONFIG=$(pwd)/.agal/config.yaml
-agal --prepare backend-dev
+agal prepare my-preset
 ```
 
 ---
@@ -148,28 +157,51 @@ agal --prepare backend-dev
 ## Command reference
 
 ```bash
-# Presets
-agal --new <name>       new preset (fzf multi-select)
-agal --list             list presets
-agal --info <name>      what's in a preset
-agal --edit <name>      edit in $EDITOR
-agal --validate <name>  check every skill resolves + has frontmatter
+# Git Sources (Skills & MCP Repositories)
+agal source add <git-url> [--name <name>]   # attach git repo as source (auto-detects skills & MCP)
+agal source list                            # list connected repositories
+agal source update [name]                   # git pull updates from remote
+agal source remove <name>                   # remove attached repository
 
-# Project
-agal --prepare <name>      link skills + guidelines into cwd
-agal --prepare <name> -r   remote mode (copy instead of symlink)
-agal --status              active preset + mode
-agal --unprepare           remove everything agal created
+# Unified Installation (Skills & MCP)
+agal add skill <name> [--local|--global]    # install individual skill (full directory package)
+agal add mcp <name> [--local|--global]      # configure MCP server (.mcp.json or user config)
+agal add preset <name> [--local|--global]   # install entire preset
+agal remove <skill|mcp|preset> <name>       # cleanly uninstall item/preset
 
-# Diagnostics
-agal --check     flag skills missing frontmatter
-agal --config    open config.yaml
+# Presets (Unified Skills + MCP)
+agal preset create <name>                   # interactive preset creator (fzf / CLI menu)
+agal preset list                            # list all presets
+agal preset info <name>                     # show skills and MCP in a preset
+agal preset edit <name>                     # edit preset YAML in $EDITOR
+agal preset delete <name> [--yes]           # delete a preset file definition
 
-# Launch
-agal                  interactive
-agal <preset>         pick CLI
-agal <preset> <cli>   run directly
+# Diagnostics & Updates
+agal check                                  # validate metadata & check remote updates
+agal update                                 # pull updates for all sources
+agal status                                 # active local preset & global items
+
+# Project Shortcuts (backward compatible)
+agal prepare <name>                         # link skills + MCP into current project
+agal prepare <name> -r                      # copy mode (portable / cloud agents)
+agal unprepare                              # cleanly remove everything agal created
 ```
+
+### Remote (HTTP) MCP servers
+
+A source can define remote MCP servers next to stdio ones. Put an `agal-mcp.yaml`
+(or `mcp.json` with `mcpServers`) in the source repo:
+
+```yaml
+itsaplan:
+  type: http            # optional, defaults to http
+  url: https://api.example.com/mcp
+  headers:
+    Authorization: "Bearer ${ITSAPLAN_TOKEN}"
+```
+
+Never commit secrets — use `${VAR}` placeholders; Claude Code expands them from
+the environment when it reads `.mcp.json`.
 
 ---
 
@@ -180,6 +212,6 @@ agal <preset> <cli>   run directly
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Covers this repo's own content only (tool,
-presets, guidelines). The skill library is not bundled; third-party skills are
-governed by their own upstream MIT licenses — see the table above.
+MIT — see [LICENSE](LICENSE). Covers this repo's own content (tool,
+presets, guidelines). Bundled and third-party skills are governed
+by their respective upstream MIT licenses.
