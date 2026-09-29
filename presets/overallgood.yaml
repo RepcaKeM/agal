@@ -1,0 +1,22 @@
+name: overallgood
+description: General set of agent skills
+skills:
+- brainstorming
+- discernment-nudge
+- executing-plans
+- finishing-a-development-branch
+- i-have-adhd
+- ponytail
+- ponytail-audit
+- ponytail-review
+- systematic-debugging
+- test-driven-development
+- understand
+- understand-chat
+- understand-dashboard
+- understand-knowledge
+- understand-onboard
+- using-superpowers
+- verification-before-completion
+- writing-plans
+mcp: []

@@ -76,9 +76,10 @@ if [ ! -f "$CFG" ]; then
   fi
   SKILLS_DIR="${SKILLS_DIR:-$HOME/my-skills}"
   cat > "$CFG" <<EOF
+sources_dir: $AGAL_HOME/sources
 skills_dir: $SKILLS_DIR
 presets_dir: $AGAL_HOME/presets
-core_preset: dev-workflow-core
+core_preset: null
 context_file: $SRC_DIR/AGENTS.md
 EOF
   say "Config written: $CFG"
