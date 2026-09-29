@@ -115,13 +115,9 @@ Set `context_file: null` to disable.
 
 ### Core preset (auto-merge)
 
-`config.yaml: core_preset: dev-workflow-core` — a meta-preset merged into every
-preset. Core skills load BEFORE preset skills, deduplicated.
-
-Example: `agal --prepare ai-ml` → ai-ml skills + dev-workflow-core skills
-(brainstorming, planning, TDD, git-worktrees, etc. always available).
-
-Disable: `core_preset: null`.
+`config.yaml: core_preset: <name>` — an optional meta-preset merged into every
+preset. Core skills and MCP servers load BEFORE preset skills, deduplicated.
+Set `core_preset: null` (default) if no global meta-preset is desired.
 
 ---
 
@@ -131,39 +127,41 @@ Disable: `core_preset: null`.
 curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bash
 ```
 
-Then `agal --config` to view `skills_dir`. `fzf` recommended for interactive pickers.
-
-The skill library is **bundled** in the repository under `Skills/` and configured automatically by the installer.
+Then `agal --config` to view `config.yaml`. `fzf` recommended for interactive pickers.
 
 ---
 
 ## Commands
 
 ```bash
+# Git Sources
+agal source add <git-url>    # attach git repo as source (auto-detects skills & MCP)
+agal source list             # list registered repositories
+agal source update [name]    # git pull updates from remote
+agal source remove <name>    # remove attached repository
+
+# Unified Installation (Skills & MCP)
+agal add skill <name>        # install individual skill
+agal add mcp <name>          # configure MCP server (.mcp.json)
+agal add preset <name>       # install entire preset
+agal remove <skill|mcp|preset> <name>
+
 # Presets
-agal --new backend          # new preset — fzf multi-select from the library
-agal --list                 # presets with skill counts
-agal --info backend          # which skills are in a preset
-agal --edit backend          # edit preset in $EDITOR
+agal preset create <name>    # interactive preset creator (fzf / CLI menu)
+agal preset list             # list all presets
+agal preset info <name>      # show skills and MCP in a preset
+agal preset edit <name>      # edit preset YAML in $EDITOR
+agal preset delete <name>    # delete preset definition
 
 # Project mode (e.g. emdash / worktree workflow)
-agal --prepare backend       # links skills + guidelines into cwd
-agal --status                # active preset, mode, guidelines
-agal --prepare automation    # swap preset (old links removed)
-agal --unprepare             # remove everything agal created
+agal prepare <name>          # links skills + MCP + guidelines into cwd
+agal prepare <name> -r       # copy mode (portable / cloud agents)
+agal status                  # active preset, mode, guidelines
+agal unprepare               # remove everything agal created
 
-# Pure CLI mode
-agal                         # interactive: pick preset → pick CLI
-agal backend                 # pick CLI only
-agal backend claude          # run directly (links auto-removed on exit)
-
-# Diagnostics
-agal --check                 # which skills lack frontmatter
-agal --validate backend-dev  # is the preset (after core merge) complete
-agal --config                # open config.yaml
-
-# Remote (cloud agents, CI, devcontainers, portable projects)
-agal --prepare backend-dev --remote   # copy content instead of symlinking
+# Diagnostics & Updates
+agal check                   # validate metadata & check remote updates
+agal update                  # pull updates for all sources
 ```
 
 ### `AGAL_CONFIG` env var (per-project config)
