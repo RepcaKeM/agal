@@ -95,10 +95,11 @@ short, pick fewer and say so.
    Q: … / A: …
 ```
 
-Then ask once: which numbers to send, whether to attach files or profile projects /
-certificates (`get_profile list_highlights`), and any boost. The user may also change a
-text or a rate — rebuild that preview and show it again. No answer or "no" → send
-nothing.
+Then ask once which numbers to send. Attachments and boost follow the standing rules in
+`criteria.md` (currently: never attach, never boost) — state them in one line instead of
+asking; ask only if `criteria.md` has no rule. The user may also change a text or a rate —
+rebuild that preview and show it again. No answer or "no" → send nothing. A preview
+expires 15 minutes after it is created (`expires_at`); if it expired, rebuild it.
 
 **8. Send** each approved one with `confirm_preview` (type `proposal` or
 `proposal_accept_invitation`), then find its proposal id with

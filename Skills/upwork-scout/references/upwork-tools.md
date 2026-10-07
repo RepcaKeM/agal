@@ -31,5 +31,8 @@ takes `org_uid` — get it once per run from `list_accounts` (the account with
 ## What does not exist
 
 - **No draft on upwork.com.** A preview lives only on the MCP server; the user cannot
-  open or submit it on upwork.com. The preview has no URL and its lifetime is not
-  documented. Submitting happens only through `confirm_preview`.
+  open or submit it on upwork.com. It has no URL and expires 15 minutes after creation
+  (`expires_at`, `ttl_seconds: 899` observed 2026-10-07). Submitting happens only through
+  `confirm_preview`.
+- **Proposal counts in search lag.** `find_jobs search` showed 17 proposals; after
+  submitting, `list_freelancer_proposals get` insights showed 68 for the same job.
