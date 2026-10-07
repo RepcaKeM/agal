@@ -52,18 +52,20 @@ Every move gets a one-line comment, e.g. `Klient złożył ofertę 2026-10-09`.
 
 **2. Collect jobs**, in this order:
 1. `list_freelancer_proposals invitations` (status pending) → `find_jobs get` per job.
-2. `find_jobs smart_search` (`mode: most_recent`, `days_posted: 3`, `verified_payment_only: true`).
-3. `find_jobs search` per keyword in `criteria.md` (`verified_payment_only: true`, `limit: 10`).
+2. `find_jobs smart_search` (`mode: most_recent`, `days_posted: 3`, `verified_payment_only: true`, `proposals_max: 50`).
+3. `find_jobs search` per keyword in `criteria.md` (`verified_payment_only: true`, `proposals_max: 50`, `limit: 10`).
 
 **3. Skip duplicates:** `applied: true`; a job already seen this run; a job URL that appears
 in any `upwork`-labelled LEAD task (`list_issues` with `includeArchived: 'true'`, all
 columns).
 
 **4. Judge.** Read the full posting (`find_jobs get`) before judging. REJECT rules from
-`criteria.md` drop a job; count the reason. Hourly: the posted maximum must be ≥ the
-floor; fixed: budget ≥ the floor. Prefer clients with spend and hires; a posting that
-already hired or made offers is weak. Remaining jobs get priority high or medium per
-`criteria.md`.
+`criteria.md` drop a job; count the reason. Always reject:
+- client payment not verified (also for invitations);
+- more than 50 proposals, `totalHired` > 0, or more than 5 `totalInvitedToInterview`;
+- hourly with a posted maximum below the floor; fixed below the floor.
+Hourly with no posted rate is allowed. Prefer clients with spend and hires. Remaining
+jobs get priority high or medium per `criteria.md`.
 
 **5. Pick** up to `limit`: invitations first, then high, then medium. If Connects run
 short, pick fewer and say so.
@@ -72,8 +74,9 @@ short, pick fewer and say so.
 1. Write the cover letter and screening answers with the `sales-writing` skill. Pass it
    the posting, the evidence file, `banned-names.txt` and the portfolio line from
    `criteria.md`. Its `check_copy.py` must print `OK`.
-2. Rate (`charged_amount`): hourly — the posted maximum, never below the floor; fixed —
-   the client's budget. Say which you chose.
+2. Rate (`charged_amount`): hourly — the posted maximum, never below the user's rate
+   in `criteria.md`; hourly with no posted rate — the user's rate; fixed — the client's
+   budget. Say which you chose.
 3. Invitation → `manage_proposals accept_invitation`; otherwise `manage_proposals create`
    (after confirming there is no invitation or proposal for the job). Keep the
    `preview_id`. A failure → report the job as an error and move on.
