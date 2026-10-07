@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Lint sales copy: word limit, banned words, banned names, closing question.
+"""Lint sales copy: word limit, banned words, banned names, closing question, required text.
 
-Usage: check_copy.py FILE --max-words N [--banned-names PATH] [--require-question]
+Usage: check_copy.py FILE --max-words N [--banned-names PATH] [--require-question] [--require-text STR ...]
 Prints OK (exit 0) or one violation per line (exit 1). Missing names file: exit 2.
 """
 import argparse
@@ -24,7 +24,8 @@ def _contains(text: str, term: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text, re.IGNORECASE) is not None
 
 
-def check(text: str, max_words: int, banned_words: list[str], banned_names: list[str], require_question: bool) -> list[str]:
+def check(text: str, max_words: int, banned_words: list[str], banned_names: list[str], require_question: bool,
+          required: list[str] = ()) -> list[str]:
     violations = []
     words = len(text.split())
     if words > max_words:
@@ -33,6 +34,7 @@ def check(text: str, max_words: int, banned_words: list[str], banned_names: list
     violations += [f"banned name: {n}" for n in banned_names if _contains(text, n)]
     if require_question and not text.rstrip().endswith("?"):
         violations.append("must end with a question")
+    violations += [f"missing required text: {r}" for r in required if r.lower() not in text.lower()]
     return violations
 
 
@@ -42,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-words", type=int, required=True)
     parser.add_argument("--banned-names")
     parser.add_argument("--require-question", action="store_true")
+    parser.add_argument("--require-text", action="append", default=[])
     args = parser.parse_args(argv)
 
     names: list[str] = []
@@ -53,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     text = Path(args.file).read_text(encoding="utf-8")
-    violations = check(text, args.max_words, load_list(BANNED_WORDS_FILE), names, args.require_question)
+    violations = check(text, args.max_words, load_list(BANNED_WORDS_FILE), names, args.require_question, args.require_text)
     print("\n".join(violations) if violations else "OK")
     return 1 if violations else 0
 

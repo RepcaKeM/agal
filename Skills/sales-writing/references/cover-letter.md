@@ -5,7 +5,7 @@ Four short paragraphs, 150 words at most.
 | # | Paragraph | Job |
 |---|---|---|
 | 1 | Problem | Their problem in their words + how you would solve it. 1–2 sentences. |
-| 2 | Proof | One matching case: what was built, for whom (industry + country), one number if the evidence has one. |
+| 2 | Proof | One matching case: what was built, for whom (industry + country), one number if the evidence has one. Portfolio link last, if the caller gave one. |
 | 3 | Plan | 2–3 numbered steps specific to this job. |
 | 4 | Question | One question the client must answer to move forward. |
 
@@ -17,7 +17,7 @@ Four short paragraphs, 150 words at most.
 - "Dear Hiring Manager"
 - Any sentence about yourself before the client's problem.
 
-## Example (99 words)
+## Example (116 words)
 
 Job: n8n workflow that enriches inbound leads with GPT and pushes them to HubSpot.
 
@@ -26,7 +26,8 @@ Job: n8n workflow that enriches inbound leads with GPT and pushes them to HubSpo
 >
 > I run the same pattern in production for a B2B print company: n8n pulls new
 > contacts nightly, an LLM fills in company details, and results land in their CRM
-> for review.
+> for review. More cases: example.com (happy to keep our conversation here on
+> Upwork until a contract is in place).
 >
 > Plan: 1) map your form fields to HubSpot properties, 2) build and test the
 > enrichment on 20 real leads, 3) switch it on with error alerts to Slack.

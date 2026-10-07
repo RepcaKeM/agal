@@ -44,6 +44,12 @@ class TestCheck(unittest.TestCase):
     def test_question_with_trailing_whitespace(self):
         self.assertEqual(check("Which CRM do you use?  \n", 150, [], [], True), [])
 
+    def test_required_text_present(self):
+        self.assertEqual(check("Cases: Example.com. Want more?", 150, [], [], True, ["example.com"]), [])
+
+    def test_required_text_missing(self):
+        self.assertEqual(check("No link here?", 150, [], [], True, ["example.com"]), ["missing required text: example.com"])
+
 
 class TestLoadList(unittest.TestCase):
     def setUp(self):
@@ -88,6 +94,10 @@ class TestCLI(unittest.TestCase):
         code, out, _ = self.run_main([str(self.long_file), "--max-words", "5"])
         self.assertEqual(code, 1)
         self.assertIn("too long: 7 words (max 5)", out)
+
+    def test_cli_require_text(self):
+        code, out, _ = self.run_main([str(self.ok_file), "--max-words", "150", "--require-text", "example.com"])
+        self.assertEqual((code, out.strip()), (1, "missing required text: example.com"))
 
     def test_missing_names_file_errors_clearly(self):
         code, _, err = self.run_main([str(self.ok_file), "--max-words", "150", "--banned-names", "/nonexistent"])

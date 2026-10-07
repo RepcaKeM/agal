@@ -14,6 +14,7 @@ should see their own problem, one proof that you solved it before, and a next st
   instructions (see Rule 8).
 - **Evidence file** — the only source of facts you may cite (cases, numbers, stack).
 - **Banned names file** — client and employer names you must never write.
+- **Portfolio link** (optional) — and, if given, the sentence that must accompany it.
 
 This skill holds no facts about the seller. If the caller gives no evidence file, ask
 for one; do not invent experience.
@@ -25,6 +26,8 @@ for one; do not invent experience.
    experience — Upwork shows only the opening in its preview.
 2. **One proof.** Pick the single best-matching case from the evidence file. Use one
    number if that case has one. Describe the client by industry and country only.
+   If the caller gave a portfolio link, put it once at the end of this paragraph,
+   with the accompanying sentence when one is given.
 3. **Plan in 2–3 steps**, specific to this job.
 4. **End with one question** the client has to answer to move forward.
 5. **Limits:** cover letter ≤ 150 words; screening answer ≤ 50 words; task or note
@@ -47,6 +50,7 @@ Structure and an example: `references/cover-letter.md`.
 4. Save it to a temporary file and check it:
    - cover letter or reply:
      `python3 <this skill dir>/scripts/check_copy.py FILE --max-words 150 --banned-names <banned names file> --require-question`
+     plus `--require-text <portfolio link>` when a link was given
    - screening answer:
      `python3 <this skill dir>/scripts/check_copy.py FILE --max-words 50 --banned-names <banned names file>`
 5. Exit code 1: fix every listed violation and check again. Exit code 2: the banned
