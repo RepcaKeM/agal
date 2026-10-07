@@ -21,9 +21,11 @@ for one; do not invent experience.
 
 ## Rules
 
-1. **Open with their problem.** The first two sentences restate the client's problem
-   in their words and say how you would solve it. No "Hi, I'm…", no years of
-   experience — Upwork shows only the opening in its preview.
+1. **Open with your solution.** The first one or two sentences say what you would
+   build or do for this job, concretely (approach, stack, outcome). Do not restate
+   the client's problem — they wrote it and know it. No "Hi, I'm…", no years of
+   experience — Upwork shows only the opening in its preview. Vary the wording
+   between proposals; no fixed opening formula.
 2. **One proof.** Pick the single best-matching case from the evidence file. Use one
    number if that case has one. Describe the client by industry and country only.
    If the caller gave a portfolio line, add it once, verbatim, as its own line at the
@@ -44,7 +46,7 @@ Structure and an example: `references/cover-letter.md`.
 
 ## Procedure
 
-1. Write down the client's problem in one sentence, using their words.
+1. Note for yourself the client's problem in one sentence (do not put it in the text).
 2. Choose the case from the evidence file that best matches that problem.
 3. Write the text following the rules.
 4. Save it to a temporary file and check it:
