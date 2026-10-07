@@ -3,6 +3,7 @@
 
 Usage: check_copy.py FILE --max-words N [--banned-names PATH] [--require-question] [--require-text STR ...]
 Prints OK (exit 0) or one violation per line (exit 1). Missing names file: exit 2.
+Required texts are mandated boilerplate and do not count toward the word limit.
 """
 import argparse
 import re
@@ -27,7 +28,7 @@ def _contains(text: str, term: str) -> bool:
 def check(text: str, max_words: int, banned_words: list[str], banned_names: list[str], require_question: bool,
           required: list[str] = ()) -> list[str]:
     violations = []
-    words = len(text.split())
+    words = len(text.split()) - sum(len(r.split()) for r in required if r.lower() in text.lower())
     if words > max_words:
         violations.append(f"too long: {words} words (max {max_words})")
     violations += [f"banned word: {w}" for w in banned_words if _contains(text, w)]

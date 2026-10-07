@@ -47,6 +47,10 @@ class TestCheck(unittest.TestCase):
     def test_required_text_present(self):
         self.assertEqual(check("Cases: Example.com. Want more?", 150, [], [], True, ["example.com"]), [])
 
+    def test_required_text_not_counted(self):
+        line = "Portfolio: example.com - more proofs and examples of my work."
+        self.assertEqual(check("word " * 150 + line + " Ok?", 151, [], [], True, [line]), [])
+
     def test_required_text_missing(self):
         self.assertEqual(check("No link here?", 150, [], [], True, ["example.com"]), ["missing required text: example.com"])
 
