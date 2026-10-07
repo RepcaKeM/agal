@@ -1,0 +1,9 @@
+name: freelance
+description: Upwork joby + proposale, Zoho Mail (read/drafts), itsaplan
+skills:
+- upwork-scout
+- sales-writing
+mcp:
+- upwork
+- zoho-imap
+- itsaplan

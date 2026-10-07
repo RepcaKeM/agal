@@ -30,3 +30,4 @@ venv/
 github_original/
 .antigravitycli/
 
+.env
