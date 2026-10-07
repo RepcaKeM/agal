@@ -36,7 +36,7 @@ Missing file → stop and say which.
 **0. Start.** `list_accounts` → `org_uid` of the TALENT account. Read the three inputs.
 itsaplan `get_project LEAD` → column ids by `stateType` (`started` = In Progress,
 `completed` = Done, `canceled` = Canceled), custom field ids by name `oferta` and
-`Budżet`, label id by name `upwork`. Anything missing → stop with what is missing
+`Budżet`, label id by name `upwork` (names compared case-insensitively). Anything missing → stop with what is missing
 (e.g. "add label `upwork` in LEAD"). Upwork tools unavailable or auth error → stop:
 "`/mcp` → upwork → authenticate".
 
