@@ -96,6 +96,34 @@ class TestSources(unittest.TestCase):
             )
             self.assertNotIn("command", servers["itsaplan"])
 
+    def test_parse_mcp_manifest_registry_packages_with_args(self):
+        with tempfile.TemporaryDirectory() as td:
+            server_json = Path(td) / "server.json"
+            server_json.write_text(
+                json.dumps({
+                    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+                    "name": "io.github.morluto/rea",
+                    "packages": [
+                        {
+                            "registryType": "npm",
+                            "identifier": "rea-agents",
+                            "packageArguments": [
+                                {
+                                    "type": "positional",
+                                    "value": "mcp",
+                                }
+                            ],
+                        }
+                    ],
+                }),
+                encoding="utf-8",
+            )
+            servers = parse_mcp_manifest(server_json)
+            self.assertIn("rea", servers)
+            self.assertEqual(servers["rea"]["command"], "npx")
+            self.assertEqual(servers["rea"]["args"], ["-y", "rea-agents", "mcp"])
+
+
     def test_index_source_dir(self):
         with tempfile.TemporaryDirectory() as td:
             source_dir = Path(td) / "source"

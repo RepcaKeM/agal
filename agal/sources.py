@@ -156,6 +156,21 @@ def parse_mcp_manifest(manifest_path: Path) -> dict[str, dict[str, Any]]:
                     command = pkg["command"]
                     args = pkg.get("args", [])
 
+                pkg_args: list[str] = []
+                for pa in pkg.get("packageArguments", []):
+                    if isinstance(pa, dict):
+                        if pa.get("type") == "named" and pa.get("name"):
+                            flag = f"--{pa['name']}"
+                            if "value" in pa and pa["value"] is not None:
+                                pkg_args.extend([flag, str(pa["value"])])
+                            else:
+                                pkg_args.append(flag)
+                        elif "value" in pa and pa["value"] is not None:
+                            pkg_args.append(str(pa["value"]))
+                    elif isinstance(pa, str):
+                        pkg_args.append(pa)
+                args.extend(pkg_args)
+
                 if command:
                     servers[sname] = {
                         "command": command,

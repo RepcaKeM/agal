@@ -12,6 +12,8 @@ venv/
 .claude/
 .agal_managed
 .agal_context
+.agal_state.json
+.mcp.json
 
 # Skill library — Bundled in the repository
 # Skills/
