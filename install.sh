@@ -66,12 +66,14 @@ say "Subagents linked: $AGAL_HOME/subagents → $SRC_DIR/Subagents"
 
 # 4. Starter config (never clobber an existing one).
 CFG="$AGAL_HOME/config.yaml"
+SKILLS_DIR="${AGAL_SKILLS_DIR:-}"
+if [ -z "$SKILLS_DIR" ] && [ -d "$SRC_DIR/Skills" ]; then
+  SKILLS_DIR="$SRC_DIR/Skills"
+fi
+
 if [ ! -f "$CFG" ]; then
-  SKILLS_DIR="${AGAL_SKILLS_DIR:-}"
   if [ -z "$SKILLS_DIR" ]; then
-    if [ -d "$SRC_DIR/Skills" ]; then
-      SKILLS_DIR="$SRC_DIR/Skills"
-    elif [ -t 0 ]; then
+    if [ -t 0 ]; then
       printf 'Path to your skills library (dir of <skill>/SKILL.md): '
       read -r SKILLS_DIR
     fi
