@@ -1,11 +1,14 @@
 # agal — Agent Agnostic Launch
 
-Per-project & user-level **skill & MCP presets** for **Claude Code** and **Gemini CLI**.
+Per-project & user-level **skill & MCP presets** and **subagents** for **Claude Code**, **Cursor**, **OpenCode**, and **Antigravity (Agy)**.
 
 By default every agent CLI discovers *all* available skills — context noise, weaker
 activation, wasted tokens. `agal` inverts this: you define a **preset** (e.g.
 `backend-dev`, `wireframing`), and `agal` links only those skills into the project.
 The agent sees a small, relevant set instead of the global pile.
+
+In addition to presets, `agal` configures specialized **subagents** with scoped
+permissions, dedicated tools, and native agent definitions across all major agent runtimes.
 
 Skills follow the **[Anthropic Agent Skills standard](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview)** —
 each is a subdirectory with `SKILL.md` plus optional `scripts/`, `references/`, `examples/`.
@@ -19,8 +22,11 @@ curl -fsSL https://raw.githubusercontent.com/RepcaKeM/agal/main/install.sh | bas
 ```
 
 The bootstrap installs the `agal` CLI (via `pipx` / `uv` / managed venv — no system
-Python pollution), links `~/.agal/presets` to the bundled presets, and writes a
-starter `~/.agal/config.yaml`.
+Python pollution), links `~/.agal/presets` and `~/.agal/subagents` to the bundled libraries,
+and writes a starter `~/.agal/config.yaml`.
+
+> [!NOTE]
+> **Existing installations:** Re-run `install.sh` (or run `ln -sfn "$PWD/Subagents" ~/.agal/subagents`) to link the bundled subagents library into `~/.agal/subagents`.
 
 Or install the CLI directly:
 
@@ -29,21 +35,24 @@ pipx install git+https://github.com/RepcaKeM/agal.git
 # or:  uv tool install git+https://github.com/RepcaKeM/agal.git
 ```
 
-Optional but recommended: `fzf` (interactive preset/skill picker).
+Optional but recommended: `fzf` (interactive preset/skill/subagent picker).
 
 ---
 
-## Skills are bundled (Batteries Included)
+## Skills & subagents are bundled (Batteries Included)
 
-This repo ships with a curated library of **modified, high-quality agent skills** under the `Skills/` directory (sourced from projects like `superpowers`, `agency-agents` and `caveman` under MIT license).
+This repo ships with curated, high-quality libraries ready out of the box:
+- **Agent skills** under the `Skills/` directory (sourced from projects like `superpowers`, `agency-agents` and `caveman` under MIT license).
+- **Starter subagents** under the `Subagents/` directory (`researcher`, `auditor`, `ui-specialist`).
 
-By default, the installer automatically configures `agal` to use these bundled skills. You don't need to download or configure any external skill library.
+By default, the installer automatically configures `agal` to use these bundled libraries. You don't need to download or configure any external library.
 
 If you want to view or customize the configuration:
 
 ```bash
-agal --config        # view or set custom skills_dir
+agal --config        # view or set custom skills_dir / subagents_dir
 agal --check         # verify every SKILL.md has name + description frontmatter
+agal subagent list   # view available subagents
 ```
 
 The `AGENTS.md` coding guidelines are original prose written for this project.
@@ -58,10 +67,11 @@ with the rest of this repo.
 ```bash
 cd ~/projects/my-project
 
-agal --prepare backend-dev   # link skills + guidelines into the project
-agal --status                # show active preset
-# ... run claude / gemini / kimi ...
-agal --unprepare             # remove everything agal created
+agal --prepare fullstack       # link skills + guidelines into the project
+agal subagent add researcher   # add a dedicated research subagent
+agal --status                  # show active preset and project status
+# ... run claude / cursor / opencode / agy ...
+agal --unprepare               # remove everything agal created (preset + subagents)
 
 # Interactive: pick preset → pick CLI → launch
 agal
@@ -121,6 +131,105 @@ Presets can optionally inherit a meta-preset (configured via `core_preset` in `c
 
 ---
 
+## Subagents
+
+While presets configure project-wide skills and MCP tools, modern agent workflows often benefit from **specialized subagents** dedicated to specific domains (e.g. deep research, code auditing, UI styling).
+
+`agal subagent` provisions native agent files for each supported runtime, installs required skills and MCP dependencies into the project, and manages lifecycles with automatic reference counting.
+
+### Supported runtimes & generated files
+
+When you add a subagent (`agal subagent add <name>`), `agal` writes native project-level definitions conforming to each runtime's official agent specification:
+
+| Runtime | Generated Path | Subagent Format |
+|---|---|---|
+| **Claude Code** | `.claude/agents/<name>.md` | Native agent spec (`name`, `description`, `model`, `skills`, `mcpServers`, `disallowedTools`) |
+| **Cursor** | `.cursor/agents/<name>.md` | Subagent definition (`name`, `description`, `model: inherit`, `readonly`) |
+| **OpenCode** | `.opencode/agents/<name>.md` | Subagent definition (`description`, `mode: subagent`, `permission: {edit, bash}`) |
+| **Antigravity (Agy)** | `.agents/agents/<name>/agent.md` | Native agent spec (`subagent: true`, `mainAgent: false`, `model: inherit`, `tools` whitelist) |
+
+### Commands
+
+```bash
+# List all available subagents in your subagents library
+agal subagent list
+
+# Add subagent(s) to the project (interactive picker if omitted)
+agal subagent add researcher auditor
+
+# Remove subagent(s) and clean up unreferenced dependencies
+agal subagent remove researcher
+
+# Scaffold a new subagent definition template in <subagents_dir>/<name>/AGENT.md
+agal subagent create my-agent
+
+# Clean up all subagents, skills, MCP servers, and presets from current project
+agal unprepare
+```
+
+### Subagent definition format (`AGENT.md`)
+
+Subagents are stored in `Subagents/<name>/AGENT.md` (or your configured `subagents_dir`). Each subagent is defined by YAML frontmatter and a Markdown system prompt:
+
+```yaml
+---
+name: researcher            # required; must match the directory name
+description: >-             # required; used by runtimes to decide when to delegate
+  Deep codebase exploration, web research, and documentation queries.
+  Use when the user asks for deep research, architecture analysis, or documentation search.
+model: inherit              # optional: inherit | sonnet | opus | haiku (default: inherit)
+permissions:                # optional tool restrictions (both default to true)
+  edit_files: false
+  run_commands: true
+skills:                     # optional list of required skill names
+  - context7-docs
+  - find-docs
+mcp:                        # optional list of required MCP server names
+  - context7
+---
+You are a dedicated research subagent. Your role is strictly investigative: explore the codebase, query documentation, search the web, and synthesize findings. You do not modify code or configuration files.
+```
+
+#### Fields & defaults
+
+- **`name`** (*string*, required): Unique name matching the directory name (`Subagents/<name>/`).
+- **`description`** (*string*, required): Used by agent runtimes to determine when to delegate tasks. Should always include a `"Use when..."` clause.
+- **`model`** (*string*, default: `inherit`): Model preference (`inherit`, `sonnet`, `opus`, `haiku`). Passed through to Claude Code; other runtimes inherit their session model.
+- **`permissions`** (*mapping*, default: `{edit_files: true, run_commands: true}`):
+  - `edit_files`: Set `false` to restrict file editing and creation.
+  - `run_commands`: Set `false` to restrict shell execution.
+- **`skills`** (*list of strings*, default: `[]`): Skills required by the subagent. Automatically installed into `.claude/skills/` and `.agents/skills/`.
+- **`mcp`** (*list of strings*, default: `[]`): MCP servers required by the subagent. Automatically configured in `.mcp.json`.
+- **Markdown Body**: The system prompt defining the subagent's role, instructions, and operating behavior.
+
+#### Permission mapping
+
+`agal` automatically translates abstract permissions into native enforcement for each runtime:
+
+| Runtime | `edit_files: false` | `run_commands: false` |
+|---|---|---|
+| **Claude Code** | `disallowedTools: [Edit, Write, NotebookEdit]` | `disallowedTools: [Bash]` |
+| **Cursor** | `readonly: true` | `readonly: true` |
+| **OpenCode** | `permission.edit: deny` | `permission.bash: deny` |
+| **Antigravity** | `tools` whitelist omitting edit/write tools | `tools` whitelist omitting `run_command` |
+
+### Dependency reference counting & cleanup
+
+When installing a subagent:
+- Any declared `skills` are linked project-locally.
+- Any declared `mcp` servers are added to project `.mcp.json`.
+- Newly installed dependencies are tracked in `.agal_state.json` under `subagent_owned`.
+
+When removing a subagent (`agal subagent remove <name>`):
+- Only dependencies not required by any other installed subagent or active preset are removed.
+- Pre-existing dependencies (manually installed before the subagent or owned by a preset) are never deleted.
+- Running `agal unprepare` or `agal --unprepare` cleanly tears down all subagents before unlinking preset resources.
+
+> [!IMPORTANT]
+> **MCP limitation:** `agal` configures MCP servers in project-level `.mcp.json`. Currently, **only Claude Code** reads project-level `.mcp.json`. Other runtimes (Cursor, OpenCode, Antigravity) do not read project `.mcp.json` or configure MCP servers globally. This limitation applies to both presets and subagents.
+
+---
+
 ## Remote / portable mode (`--remote`)
 
 Symlinks don't survive cloud agents (Claude Code Web, Cursor cloud) or a fresh
@@ -142,10 +251,11 @@ Skip the global `~/.agal/config.yaml` for a monorepo with its own setup:
 ```bash
 mkdir -p .agal
 cat > .agal/config.yaml <<EOF
-skills_dir:   /opt/skills
-presets_dir:  /opt/agal/presets
-core_preset:  null           # optional meta-preset to auto-merge
-context_file: /opt/agal/AGENTS.md
+skills_dir:    /opt/skills
+subagents_dir: /opt/agal/subagents
+presets_dir:   /opt/agal/presets
+core_preset:   null           # optional meta-preset to auto-merge
+context_file:  /opt/agal/AGENTS.md
 EOF
 
 export AGAL_CONFIG=$(pwd)/.agal/config.yaml
@@ -175,6 +285,12 @@ agal preset list                            # list all presets
 agal preset info <name>                     # show skills and MCP in a preset
 agal preset edit <name>                     # edit preset YAML in $EDITOR
 agal preset delete <name> [--yes]           # delete a preset file definition
+
+# Subagents (Multi-Runtime Specialized Agents)
+agal subagent list                          # list available subagents
+agal subagent add [name...]                 # install subagent(s) (fzf / picker if omitted)
+agal subagent remove <name...>              # remove subagent(s) and unused dependencies
+agal subagent create <name>                 # scaffold new subagent template in subagents_dir
 
 # Diagnostics & Updates
 agal check                                  # validate metadata & check remote updates
