@@ -244,6 +244,34 @@ class TestCLISubagents(unittest.TestCase):
         state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
         self.assertEqual(sorted(state.get("subagents", {})), ["alpha", "solo"])
 
+    def test_prepare_adds_adhd_rules_only_when_configured(self):
+        cfg_path = self.home_dir / "config.yaml"
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        Path(cfg["context_file"]).write_text("# guidelines\n", encoding="utf-8")
+        self._run(["prepare", "p"])
+        self.assertNotIn("Reader has ADHD.", (self.proj_dir / "AGENTS.md").read_text(encoding="utf-8"))
+        cfg["adhd_rules"] = True
+        cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+        self._run(["prepare", "p"])
+        agents = (self.proj_dir / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertEqual(agents.count("Reader has ADHD."), 1)
+
+    def test_refresh_recopies_installed_skills_from_source(self):
+        self._run(["prepare", "p"])
+        self._run(["subagent", "add", "beta"])
+        for s in ["s1", "s2"]:
+            (self.skills_dir / s / "SKILL.md").write_text(
+                f"---\nname: {s}\ndescription: Use when {s}.\n---\nUpdated\n", encoding="utf-8"
+            )
+        out = self._run(["refresh"])
+        self.assertIn("Refreshed", out)
+        for s in ["s1", "s2"]:
+            copied = (self.proj_dir / ".claude" / "skills" / s / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("Updated", copied)
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state.get("preset"), "p")
+        self.assertIn("beta", state.get("subagents", {}))
+
     def test_subagent_wizard_empty_selection_keeps_installed_subagents(self):
         self._run(["subagent", "add", "alpha"])
         with (

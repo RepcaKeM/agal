@@ -79,15 +79,18 @@ agal
 
 A project already prepared with an older preset picks up `orchestrator` or
 `uop-b2b-szukanie` by running that prepare again, then adding the subagents
-once more. Adding a subagent again drops skills it no longer uses.
+once more. Adding a subagent again drops skills it no longer uses and keeps
+existing skill copies as they are. `agal refresh` copies installed skills,
+guidelines, and subagents again from their sources, overwriting local edits.
 
 `--prepare` creates, in the project root:
 
 - `.claude/skills/` and `.agents/skills/` — copies of the preset's skills
 - `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — copies of the coding guidelines
-  (skipped if you already have your own file by that name). The ADHD writing
-  rules are appended only to guideline files agal created and tracks, and only
-  for the runtimes selected for this project.
+  (skipped if you already have your own file by that name). With
+  `adhd_rules: true` in the config, the ADHD writing rules are appended to the
+  guideline files agal created and tracks, only for the runtimes selected for
+  this project.
 
 `agal runtime set <claude|cursor|opencode|agy>` limits those files to one IDE/CLI.
 With no selection, every supported environment is prepared.
@@ -274,6 +277,7 @@ subagents_dir: /opt/agal/subagents
 presets_dir:   /opt/agal/presets
 core_preset:   null           # optional meta-preset to auto-merge
 context_file:  /opt/agal/AGENTS.md
+adhd_rules:    false          # true appends ADHD writing rules to guideline files
 EOF
 
 export AGAL_CONFIG=$(pwd)/.agal/config.yaml
@@ -324,8 +328,8 @@ agal update                                 # pull updates for all sources
 agal status                                 # active local preset & global items
 
 # Project Shortcuts (backward compatible)
-agal prepare <name>                         # link skills + MCP into current project
-agal prepare <name> -r                      # copy mode (portable / cloud agents)
+agal prepare <name>                         # copy skills + MCP into current project
+agal refresh                                # copy installed items again from sources
 agal unprepare                              # cleanly remove everything agal created
 ```
 

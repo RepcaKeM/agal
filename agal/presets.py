@@ -13,6 +13,7 @@ from agal.config import (
     load_config,
 )
 from agal.context import (
+    ADHD_BLOCK,
     build_routing_block,
     place_context_file,
     remove_context_file,
@@ -462,7 +463,7 @@ def install_preset(
             placed_guidelines = place_context_file(
                 target_dir=target,
                 context_path=Path(ctx_file),
-                routing_block=routing_block,
+                routing_block=routing_block + (ADHD_BLOCK if cfg.get("adhd_rules") else ""),
                 filenames=context_filenames_for_runtimes(runtimes),
             )
         else:

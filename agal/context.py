@@ -91,7 +91,7 @@ def build_routing_block(skills: list[str], skill_paths: dict[str, Path]) -> tupl
 
 ADHD_BLOCK = """
 
-<!-- agal:adhd — added with every preset; removed by --unprepare -->
+<!-- agal:adhd — added when config sets adhd_rules: true; removed by --unprepare -->
 ## How to write (this project)
 
 Reader has ADHD. These rules apply to every reply in this project.
@@ -142,7 +142,7 @@ def place_context_file(
             else:
                 skipped.append(fname)
                 continue
-        dest.write_text(source_text + routing_block + ADHD_BLOCK, encoding="utf-8")
+        dest.write_text(source_text + routing_block, encoding="utf-8")
         created.append(fname)
 
     for fname in prev - set(names):

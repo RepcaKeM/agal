@@ -795,6 +795,20 @@ def cmd_unprepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     print(f"✅ Unprepared: removed {len(res['removed_skills'])} skills, {len(res['removed_mcp'])} MCP servers.")
 
 
+def cmd_refresh(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
+    """Copy installed skills, guidelines, and subagent files again from their sources."""
+    target = Path.cwd()
+    preset = load_local_state(target).get("preset")
+    if preset:
+        try:
+            install_preset(preset, scope="local", cfg=cfg)
+        except (ValueError, FileNotFoundError) as e:
+            print(f"⚠️  Preset '{preset}' not refreshed: {e}")
+    sync_installed_skills(target, cfg)
+    sync_installed_subagents(target, cfg)
+    print("✅ Refreshed skills, guidelines, and subagents from their sources.")
+
+
 def _unmark_preset_owned_skill(target_dir: Path, skill_name: str) -> None:
     state = load_local_state(target_dir)
     owned = state.get("preset_owned")
@@ -1071,6 +1085,11 @@ def main(argv: list[str] | None = None) -> None:
     # unprepare (subcommand alias)
     subparsers.add_parser("unprepare", help="Remove prepared preset from current project")
 
+    subparsers.add_parser(
+        "refresh",
+        help="Copy installed skills, guidelines, and subagents again from sources (overwrites local edits)",
+    )
+
     # check
     subparsers.add_parser("check", help="Check skill metadata and updates")
 
@@ -1080,7 +1099,7 @@ def main(argv: list[str] | None = None) -> None:
     # Pre-parse shortcut: if argv[0] is a known preset name and not a flag or subcommand
     known_commands = {
         "source", "add", "remove", "list", "skill", "preset", "update", "check", "status",
-        "prepare", "unprepare", "subagent", "runtime", "target", "ide",
+        "prepare", "unprepare", "refresh", "subagent", "runtime", "target", "ide",
         "-h", "--help", "-v", "--version", "--status",
         "--list", "--check", "--config", "--edit", "-e", "--prepare", "--unprepare",
     }
@@ -1139,6 +1158,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_prepare_alias(args, cfg)
     elif args.subcommand == "unprepare":
         cmd_unprepare_alias(args, cfg)
+    elif args.subcommand == "refresh":
+        cmd_refresh(args, cfg)
     elif args.subcommand == "update":
         cmd_source(argparse.Namespace(source_action="update", name=args.name), cfg)
     elif args.subcommand == "check":

@@ -119,6 +119,7 @@ def load_config() -> dict[str, Any]:
         "subagents_dir": str(get_subagents_dir()),
         "core_preset": None,
         "context_file": None,
+        "adhd_rules": False,
         "clis": {
             "claude": "claude",
             "gemini": "gemini",
