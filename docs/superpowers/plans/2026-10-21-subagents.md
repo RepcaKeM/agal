@@ -104,7 +104,7 @@ Claude uses a deny-list, not a `tools:` whitelist, so Skill and MCP tools stay a
 - Create: `Subagents/ui-specialist/AGENT.md`
 - Test: `tests/test_subagents.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 from pathlib import Path
@@ -134,12 +134,12 @@ class TestStarterSubagents(unittest.TestCase):
                 self.assertTrue(body.strip())
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_subagents.py::TestStarterSubagents -v`
 Expected: FAIL with `AssertionError: False is not true : Missing .../Subagents/researcher/AGENT.md`
 
-- [ ] **Step 3: Create starter subagents**
+- [x] **Step 3: Create starter subagents**
 
 | Name | `permissions` | `skills` | `mcp` | Body starts with |
 |---|---|---|---|---|
@@ -149,11 +149,11 @@ Expected: FAIL with `AssertionError: False is not true : Missing .../Subagents/r
 
 All use `model: inherit`. Each `description` ends with a "Use when …" clause. `researcher` and `ui-specialist` depend on skills/MCP that are not bundled in `Skills/`; on machines without a source providing them, install warns per Review Focus 3. This is intended.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest tests/test_subagents.py::TestStarterSubagents -v` → check: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Subagents/ tests/test_subagents.py
@@ -179,7 +179,7 @@ git commit -m "feat(subagents): add starter subagent definitions"
 - `list_subagents(cfg: dict | None = None) -> dict[str, dict]`: sorted by name; an invalid definition prints `⚠️  Skipping subagent '<name>': <error>` and is skipped; a missing directory gives `{}`.
 - `save_subagent_template(name: str, cfg: dict | None = None) -> Path`: writes a valid template; `FileExistsError` if it exists.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 import io
@@ -256,19 +256,19 @@ class TestSubagentParsing(unittest.TestCase):
             save_subagent_template("newbie", self.cfg)
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_subagents.py::TestSubagentParsing -v`
 Expected: collection ERROR with `ModuleNotFoundError: No module named 'agal.subagents'`
 
-- [ ] **Step 3: Implement** `get_subagents_dir` + `subagents_dir` in `load_config` (no `mkdir`; a missing dir means no subagents), the three functions in `agal/subagents.py`, and the `install.sh` link (same as `presets`, lines 60–63; add `subagents_dir: $AGAL_HOME/subagents` to the starter config heredoc).
+- [x] **Step 3: Implement** `get_subagents_dir` + `subagents_dir` in `load_config` (no `mkdir`; a missing dir means no subagents), the three functions in `agal/subagents.py`, and the `install.sh` link (same as `presets`, lines 60–63; add `subagents_dir: $AGAL_HOME/subagents` to the starter config heredoc).
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `pytest tests/test_subagents.py -v` → check: all PASS
 Run: `bash -n install.sh` → check: no syntax error
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add agal/subagents.py agal/config.py install.sh tests/test_subagents.py
@@ -291,14 +291,14 @@ No changes to `agal/context.py`, `AGENTS.md`, or `GEMINI.md`.
 - `materialize_adapters(agent: dict, target_dir: Path) -> list[str]`: writes the rendered files; a path that already exists (file or symlink) is skipped with `⚠️  <path> exists and is not managed by agal (skipped).` and left out of the result. Returns the relative paths it wrote.
 - `unmaterialize_adapters(files: list[str], target_dir: Path) -> None`: deletes the listed files, then removes each parent directory that is now empty, walking up but never removing `target_dir` itself.
 
-- [ ] **Step 0: Verify Agy details (manual, before writing code)**
+- [x] **Step 0: Verify Agy details (manual, before writing code)**
 
 In a scratch project, create `.agents/agents/probe/agent.md` with `subagent: true`, `mainAgent: false`, `skills: [skills/<an installed skill>]`, and no `tools`. Open the Agy CLI agents view.
 → check: (a) `probe` is listed; (b) the skill resolves (confirms that `skills/<name>` is relative to `.agents/`); (c) the tool list Agy shows for `probe`. Record the real read-only tool names. They replace the provisional `AGY_READ_TOOLS = ["view_file", "grep_search"]` below. If (a) or (b) fails, stop and update the Runtime Formats table before continuing.
 
 Agy `tools` (only when a permission is false) = `AGY_READ_TOOLS` + `["replace_file_content"]` if `edit_files` + `["run_command"]` if `run_commands`. Edit-tool names also come from Step 0.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 from agal.subagents import ADAPTER_PATHS, materialize_adapters, render_adapters, unmaterialize_adapters
@@ -392,19 +392,19 @@ class TestAdapters(unittest.TestCase):
         self.assertFalse((self.target / ".cursor").exists())
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_subagents.py::TestAdapters -v`
 Expected: collection ERROR with `ImportError: cannot import name 'ADAPTER_PATHS'`
 
-- [ ] **Step 3: Implement** the four functions per the Runtime Formats and Permission mapping tables.
+- [x] **Step 3: Implement** the four functions per the Runtime Formats and Permission mapping tables.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `pytest tests/test_subagents.py -v` → check: all PASS
 Manual: in a scratch project, materialize `researcher`, then open Claude Code (`/agents`), Cursor, OpenCode (`@` agent list), and Agy. → check: each runtime lists `researcher`, and none reports a frontmatter error.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add agal/subagents.py tests/test_subagents.py
@@ -435,7 +435,7 @@ git commit -m "feat(subagents): native agent files for Claude Code, Cursor, Open
   - Otherwise: pop the entry, save, then `unmaterialize_adapters(entry["files"])`. Compute `needed` = deps of the other subagents ∪ the active preset's resolved deps (an unresolvable preset means keep everything). Uninstall owned ∖ needed: **skills first, then MCP** (so `.mcp.json` cleanup sees the final state). Reload state, drop the removed deps from `subagent_owned`, save.
 - `unprepare_all_subagents(target_dir=None, cfg=None) -> list[str]`: `remove_subagent` for every installed subagent with the preset check disabled (the caller is tearing everything down). Returns the removed names.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 import json
@@ -582,19 +582,19 @@ class TestLifecycle(unittest.TestCase):
 
 Add `import sys` to the test module imports.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_subagents.py::TestLifecycle -v`
 Expected: collection ERROR with `ImportError: cannot import name 'install_subagent'`
 
-- [ ] **Step 3: Implement** `save_local_state` fix, `uninstall_mcp` fix, and the three functions.
+- [x] **Step 3: Implement** `save_local_state` fix, `uninstall_mcp` fix, and the three functions.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `pytest tests/test_subagents.py -v` → check: all PASS
 Run: `pytest tests/test_skills.py tests/test_mcp.py tests/test_presets.py -v` → check: all PASS (the `.mcp.json` cleanup change does not break existing expectations; if a test asserted the empty file is kept, update the assertion and note it in the commit body)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add agal/subagents.py agal/skills.py agal/mcp.py tests/test_subagents.py
@@ -618,7 +618,7 @@ git commit -m "feat(subagents): install/remove with reference-counted dependenci
 - Add `"subagent"` to `known_commands` (`cli.py:695`).
 - `cmd_unprepare_alias` and `cmd_remove` (`item_type == "preset"`, local scope) call `unprepare_all_subagents` **before** `uninstall_preset`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Setup mirrors `tests/test_cli.py`: temp `AGAL_HOME` with `config.yaml` setting `skills_dir`, `subagents_dir`, `presets_dir`, `context_file` (nonexistent) to temp fixtures (same subagents/skills as Task 4), `patch("pathlib.Path.cwd", return_value=self.proj_dir)`, stdout captured.
 
@@ -676,19 +676,19 @@ class TestCLISubagents(unittest.TestCase):
         self.assertEqual(_files(self.proj_dir), [])
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pytest tests/test_cli_subagents.py -v`
 Expected: FAIL with `SystemExit: 2` (argparse: `invalid choice: 'subagent'`)
 
-- [ ] **Step 3: Implement** the `subagent` subparser with `add|remove|list|create`, `cmd_subagent`, the `known_commands` entry, and the teardown ordering in `cmd_unprepare_alias` / `cmd_remove`.
+- [x] **Step 3: Implement** the `subagent` subparser with `add|remove|list|create`, `cmd_subagent`, the `known_commands` entry, and the teardown ordering in `cmd_unprepare_alias` / `cmd_remove`.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run: `pytest tests/test_cli_subagents.py -v` → check: all PASS
 Run: `pytest tests/test_cli.py -v` → check: all PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add agal/cli.py tests/test_cli_subagents.py
@@ -702,12 +702,12 @@ git commit -m "feat(cli): add agal subagent add/remove/list/create"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Full suite** — Run: `pytest -v` → check: all PASS (70 existing + new)
+- [x] **Step 1: Full suite** — Run: `pytest -v` → check: all PASS (70 existing + new)
 
-- [ ] **Step 2: README.** Document `agal subagent add|remove|list|create`, the `AGENT.md` format (fields, defaults, permission mapping table), the generated files per runtime, `subagents_dir` + the re-run of `install.sh` that existing installs need, and the MCP limitation (only Claude Code reads `.mcp.json`).
+- [x] **Step 2: README.** Document `agal subagent add|remove|list|create`, the `AGENT.md` format (fields, defaults, permission mapping table), the generated files per runtime, `subagents_dir` + the re-run of `install.sh` that existing installs need, and the MCP limitation (only Claude Code reads `.mcp.json`).
 → check: every command in the README runs as written in a scratch project.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md
