@@ -61,6 +61,8 @@ fi
 mkdir -p "$AGAL_HOME"
 ln -sfn "$SRC_DIR/presets" "$AGAL_HOME/presets"
 say "Presets linked: $AGAL_HOME/presets → $SRC_DIR/presets"
+ln -sfn "$SRC_DIR/Subagents" "$AGAL_HOME/subagents"
+say "Subagents linked: $AGAL_HOME/subagents → $SRC_DIR/Subagents"
 
 # 4. Starter config (never clobber an existing one).
 CFG="$AGAL_HOME/config.yaml"
@@ -79,6 +81,7 @@ if [ ! -f "$CFG" ]; then
 sources_dir: $AGAL_HOME/sources
 skills_dir: $SKILLS_DIR
 presets_dir: $AGAL_HOME/presets
+subagents_dir: $AGAL_HOME/subagents
 core_preset: null
 context_file: $SRC_DIR/AGENTS.md
 EOF

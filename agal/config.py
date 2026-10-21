@@ -8,6 +8,7 @@ import yaml
 DEFAULT_HOME = Path.home() / ".agal"
 DEFAULT_PRESETS_DIR = DEFAULT_HOME / "presets"
 DEFAULT_SOURCES_DIR = DEFAULT_HOME / "sources"
+DEFAULT_SUBAGENTS_DIR = DEFAULT_HOME / "subagents"
 DEFAULT_CACHE_DIR = DEFAULT_HOME / "cache"
 DEFAULT_SOURCES_FILE = DEFAULT_HOME / "sources.yaml"
 DEFAULT_INSTALLED_FILE = DEFAULT_HOME / "installed.yaml"
@@ -31,6 +32,7 @@ GLOBAL_SKILL_DIRS = [
 DEFAULT_CONFIG: dict[str, Any] = {
     "sources_dir": str(DEFAULT_SOURCES_DIR),
     "presets_dir": str(DEFAULT_PRESETS_DIR),
+    "subagents_dir": str(DEFAULT_SUBAGENTS_DIR),
     "core_preset": None,
     "context_file": None,
     "clis": {
@@ -58,6 +60,7 @@ def load_config() -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "sources_dir": str(get_sources_dir()),
         "presets_dir": str(get_presets_dir()),
+        "subagents_dir": str(get_subagents_dir()),
         "core_preset": None,
         "context_file": None,
         "clis": {
@@ -114,6 +117,12 @@ def get_presets_dir(cfg: dict[str, Any] | None = None) -> Path:
     if cfg and cfg.get("presets_dir"):
         return Path(cfg["presets_dir"]).expanduser()
     return get_agal_home() / "presets"
+
+
+def get_subagents_dir(cfg: dict[str, Any] | None = None) -> Path:
+    if cfg and cfg.get("subagents_dir"):
+        return Path(cfg["subagents_dir"]).expanduser()
+    return get_agal_home() / "subagents"
 
 
 def get_cache_dir() -> Path:
