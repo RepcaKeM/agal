@@ -32,7 +32,13 @@ def load_local_state(target_dir: Path) -> dict[str, Any]:
 def save_local_state(target_dir: Path, state: dict[str, Any]) -> None:
     state_file = target_dir / LOCAL_STATE_FILE
     # If state is completely empty, clean up the file
-    if not state.get("skills") and not state.get("mcp") and not state.get("hooks") and not state.get("preset"):
+    if (
+        not state.get("skills")
+        and not state.get("mcp")
+        and not state.get("hooks")
+        and not state.get("preset")
+        and not state.get("subagents")
+    ):
         if state_file.exists():
             state_file.unlink()
         return

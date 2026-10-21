@@ -1,18 +1,27 @@
 from pathlib import Path
 import io
+import json
+import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 import yaml
 
+from agal.config import LOCAL_STATE_FILE
+from agal.presets import install_preset, uninstall_preset
+from agal.skills import install_skill, load_local_state
 from agal.subagents import (
     ADAPTER_PATHS,
+    install_subagent,
     list_subagents,
     load_subagent,
     materialize_adapters,
+    remove_subagent,
     render_adapters,
     save_subagent_template,
     unmaterialize_adapters,
+    unprepare_all_subagents,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -192,5 +201,140 @@ class TestAdapters(unittest.TestCase):
         unmaterialize_adapters(files, self.target)
         self.assertTrue(other.is_file())
         self.assertFalse((self.target / ".cursor").exists())
+
+
+MCP_FIXTURE = {"m1": {"config": {"command": "echo"}, "source": "test"}}
+
+
+def _files(root):
+    return sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() or p.is_symlink())
+
+
+class TestLifecycle(unittest.TestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        root = Path(self.td.name)
+        self.target = root / "project"
+        self.target.mkdir()
+        skills_dir, sub_dir, presets_dir = root / "skills", root / "subagents", root / "presets"
+        for s in ["s1", "s2"]:
+            (skills_dir / s).mkdir(parents=True)
+            (skills_dir / s / "SKILL.md").write_text(
+                f"---\nname: {s}\ndescription: Use when {s}.\n---\nBody\n", encoding="utf-8")
+        defs = {
+            "alpha": "skills: [s1, s2]\nmcp: [m1]\n",
+            "beta": "skills: [s2]\n",
+            "ghost": "skills: [missing-skill]\nmcp: [missing-mcp]\n",
+            "solo": "",
+        }
+        for n, extra in defs.items():
+            (sub_dir / n).mkdir(parents=True)
+            (sub_dir / n / "AGENT.md").write_text(
+                f"---\nname: {n}\ndescription: Use when {n}.\n{extra}---\nBody\n", encoding="utf-8")
+        presets_dir.mkdir()
+        (presets_dir / "p.yaml").write_text("name: p\nskills: [s1]\n", encoding="utf-8")
+        self.cfg = {
+            "skills_dir": str(skills_dir), "subagents_dir": str(sub_dir),
+            "presets_dir": str(presets_dir), "sources_dir": str(root / "sources"),
+            "context_file": str(root / "no-context.md"), "core_preset": None,
+        }
+        self._patches = [
+            patch.dict(os.environ, {"AGAL_HOME": str(root / "home")}),
+            patch("agal.mcp.get_all_mcp_servers", return_value=MCP_FIXTURE),
+            patch("sys.stdout", new_callable=io.StringIO),
+        ]
+        for p in self._patches:
+            p.start()
+
+    def tearDown(self):
+        for p in reversed(self._patches):
+            p.stop()
+        self.td.cleanup()
+
+    def _install(self, n):
+        return install_subagent(n, target_dir=self.target, cfg=self.cfg)
+
+    def _remove(self, n):
+        return remove_subagent(n, target_dir=self.target, cfg=self.cfg)
+
+    def _has_skill(self, s):
+        return (self.target / ".claude" / "skills" / s).exists()
+
+    def test_install_records_state_and_deps(self):
+        res = self._install("alpha")
+        self.assertEqual(res["missing"], [])
+        state = load_local_state(self.target)
+        self.assertEqual(state["subagents"]["alpha"]["skills"], ["s1", "s2"])
+        self.assertEqual(state["subagents"]["alpha"]["mcp"], ["m1"])
+        self.assertEqual(len(state["subagents"]["alpha"]["files"]), 4)
+        self.assertEqual(sorted(state["subagent_owned"]["skills"]), ["s1", "s2"])
+        self.assertTrue(self._has_skill("s1"))
+        self.assertIn("m1", json.loads((self.target / ".mcp.json").read_text())["mcpServers"])
+
+    def test_reinstall_idempotent(self):
+        self._install("alpha")
+        self._install("alpha")
+        self.assertEqual(len(load_local_state(self.target)["subagents"]["alpha"]["files"]), 4)
+
+    def test_subagent_without_deps_persists_state(self):
+        self._install("solo")
+        self.assertIn("solo", load_local_state(self.target)["subagents"])
+
+    def test_remove_last_ref_leaves_nothing(self):
+        self._install("alpha")
+        self._remove("alpha")
+        self.assertEqual(_files(self.target), [])
+
+    def test_shared_dep_kept_for_other_subagent(self):  # Review Focus 2
+        self._install("alpha")
+        self._install("beta")
+        self._remove("alpha")
+        self.assertFalse(self._has_skill("s1"))
+        self.assertTrue(self._has_skill("s2"))
+        self._remove("beta")
+        self.assertEqual(_files(self.target), [])
+
+    def test_dep_kept_for_active_preset_installed_after(self):  # Review Focus 2
+        self._install("alpha")
+        install_preset("p", target_dir=self.target, cfg=self.cfg)
+        self._remove("alpha")
+        self.assertTrue(self._has_skill("s1"))
+        self.assertFalse(self._has_skill("s2"))
+
+    def test_dep_kept_for_active_preset_installed_before(self):  # Review Focus 2
+        install_preset("p", target_dir=self.target, cfg=self.cfg)
+        self._install("alpha")
+        self._remove("alpha")
+        self.assertTrue(self._has_skill("s1"))
+
+    def test_preexisting_manual_skill_not_removed(self):  # Review Focus 2
+        install_skill("s1", target_dir=self.target, cfg=self.cfg)
+        self._install("alpha")
+        self._remove("alpha")
+        self.assertTrue(self._has_skill("s1"))
+
+    def test_missing_deps_warn_and_continue(self):  # Review Focus 3
+        res = self._install("ghost")
+        self.assertEqual(sorted(res["missing"]), ["missing-mcp", "missing-skill"])
+        out = sys.stdout.getvalue()
+        self.assertIn("missing-skill", out)
+        self.assertIn("missing-mcp", out)
+        self.assertTrue((self.target / ".claude" / "agents" / "ghost.md").is_file())
+
+    def test_remove_not_installed(self):  # Review Focus 4
+        self.assertEqual(self._remove("alpha"), {"removed": False, "skills": [], "mcp": []})
+        self.assertFalse((self.target / LOCAL_STATE_FILE).exists())
+        self._install("beta")
+        before = load_local_state(self.target)
+        self._remove("alpha")
+        self.assertEqual(load_local_state(self.target), before)
+
+    def test_unprepare_only_subagents_leaves_nothing(self):  # Review Focus 5
+        self._install("alpha")
+        self._install("beta")
+        self.assertEqual(sorted(unprepare_all_subagents(target_dir=self.target, cfg=self.cfg)), ["alpha", "beta"])
+        uninstall_preset(target_dir=self.target, cfg=self.cfg)
+        self.assertEqual(_files(self.target), [])
+
 
 

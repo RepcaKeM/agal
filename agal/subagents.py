@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import Any
 import yaml
 
-from agal.config import get_subagents_dir
+from agal.config import LOCAL_STATE_FILE, get_subagents_dir
+from agal.mcp import install_mcp, uninstall_mcp
+from agal.presets import resolve_preset
+from agal.skills import (
+    install_skill,
+    load_local_state,
+    save_local_state,
+    uninstall_skill,
+)
 
 VALID_MODELS = {"inherit", "sonnet", "opus", "haiku"}
 AGY_READ_TOOLS = ["view_file", "grep_search"]
@@ -266,4 +274,174 @@ def unmaterialize_adapters(files: list[str], target_dir: Path | str) -> None:
             p.rmdir()
         except OSError:
             pass
+
+
+def _is_present_mcp(name: str, mcp_keys: set[str]) -> bool:
+    return name in mcp_keys or f"{name}-mcp" in mcp_keys or name.removesuffix("-mcp") in mcp_keys
+
+
+def install_subagent(
+    name: str,
+    target_dir: Path | str | None = None,
+    cfg: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    agent = load_subagent(name, cfg)
+    target = (Path(target_dir) if target_dir else Path.cwd()).resolve()
+
+    state = load_local_state(target)
+    before_skills = set(state.get("skills", {}).keys())
+    before_mcp = set(state.get("mcp", {}).keys())
+
+    recorded_skills: list[str] = []
+    newly_owned_skills: list[str] = []
+    missing: list[str] = []
+
+    for s in agent.get("skills", []):
+        if s in before_skills:
+            recorded_skills.append(s)
+        else:
+            try:
+                install_skill(s, target_dir=target, scope="local", cfg=cfg)
+                recorded_skills.append(s)
+                newly_owned_skills.append(s)
+                before_skills.add(s)
+            except (ValueError, FileNotFoundError):
+                print(f"⚠️  Subagent '{name}': skill '{s}' not available (skipped).")
+                missing.append(s)
+
+    recorded_mcp: list[str] = []
+    newly_owned_mcp: list[str] = []
+
+    for m in agent.get("mcp", []):
+        if _is_present_mcp(m, before_mcp):
+            recorded_mcp.append(m)
+        else:
+            try:
+                install_mcp(m, target_dir=target, scope="local", cfg=cfg)
+                recorded_mcp.append(m)
+                newly_owned_mcp.append(m)
+                before_mcp.add(m)
+            except (ValueError, FileNotFoundError):
+                print(f"⚠️  Subagent '{name}': mcp '{m}' not available (skipped).")
+                missing.append(m)
+
+    if name in state.get("subagents", {}):
+        old_files = state["subagents"][name].get("files", [])
+        unmaterialize_adapters(old_files, target)
+
+    files = materialize_adapters(agent, target)
+
+    state = load_local_state(target)
+    state.setdefault("subagents", {})[name] = {
+        "skills": recorded_skills,
+        "mcp": recorded_mcp,
+        "files": files,
+    }
+
+    owned = state.setdefault("subagent_owned", {})
+    owned_skills = set(owned.get("skills", []))
+    owned_skills.update(newly_owned_skills)
+    owned["skills"] = sorted(owned_skills)
+
+    owned_mcp = set(owned.get("mcp", []))
+    owned_mcp.update(newly_owned_mcp)
+    owned["mcp"] = sorted(owned_mcp)
+
+    save_local_state(target, state)
+
+    return {
+        "name": name,
+        "files": files,
+        "skills": recorded_skills,
+        "mcp": recorded_mcp,
+        "missing": missing,
+    }
+
+
+def remove_subagent(
+    name: str,
+    target_dir: Path | str | None = None,
+    cfg: dict[str, Any] | None = None,
+    check_preset: bool = True,
+) -> dict[str, Any]:
+    target = (Path(target_dir) if target_dir else Path.cwd()).resolve()
+    state_file = target / LOCAL_STATE_FILE
+    if not state_file.is_file():
+        return {"removed": False, "skills": [], "mcp": []}
+
+    state = load_local_state(target)
+    if name not in state.get("subagents", {}):
+        return {"removed": False, "skills": [], "mcp": []}
+
+    entry = state["subagents"].pop(name)
+    save_local_state(target, state)
+    unmaterialize_adapters(entry.get("files", []), target)
+
+    other_subagents = state.get("subagents", {})
+    other_skills = set()
+    other_mcp = set()
+    for sub in other_subagents.values():
+        other_skills.update(sub.get("skills", []))
+        other_mcp.update(sub.get("mcp", []))
+
+    needed_skills = set(other_skills)
+    needed_mcp = set(other_mcp)
+
+    if check_preset and state.get("preset"):
+        try:
+            preset = resolve_preset(state["preset"], cfg=cfg)
+            needed_skills.update(preset.get("skills", []))
+            needed_mcp.update(preset.get("mcp", []))
+        except Exception:
+            needed_skills = set(state.get("skills", {}).keys())
+            needed_mcp = set(state.get("mcp", {}).keys())
+
+    owned = state.get("subagent_owned", {})
+    owned_skills = list(owned.get("skills", []))
+    owned_mcp = list(owned.get("mcp", []))
+
+    to_uninstall_skills = [s for s in owned_skills if s not in needed_skills]
+    to_uninstall_mcp = [m for m in owned_mcp if not _is_present_mcp(m, needed_mcp)]
+
+    uninstalled_skills: list[str] = []
+    for s in to_uninstall_skills:
+        if uninstall_skill(s, target_dir=target, scope="local"):
+            uninstalled_skills.append(s)
+
+    uninstalled_mcp: list[str] = []
+    for m in to_uninstall_mcp:
+        if uninstall_mcp(m, target_dir=target, scope="local"):
+            uninstalled_mcp.append(m)
+
+    state = load_local_state(target)
+    if "subagent_owned" in state:
+        cur_skills = [s for s in state["subagent_owned"].get("skills", []) if s not in uninstalled_skills]
+        cur_mcp = [m for m in state["subagent_owned"].get("mcp", []) if m not in uninstalled_mcp]
+        if not cur_skills and not cur_mcp and not state.get("subagents"):
+            state.pop("subagent_owned", None)
+        else:
+            state["subagent_owned"]["skills"] = cur_skills
+            state["subagent_owned"]["mcp"] = cur_mcp
+    save_local_state(target, state)
+
+    return {
+        "removed": True,
+        "skills": uninstalled_skills,
+        "mcp": uninstalled_mcp,
+    }
+
+
+def unprepare_all_subagents(
+    target_dir: Path | str | None = None,
+    cfg: dict[str, Any] | None = None,
+) -> list[str]:
+    target = (Path(target_dir) if target_dir else Path.cwd()).resolve()
+    state = load_local_state(target)
+    installed_names = list(state.get("subagents", {}).keys())
+    removed: list[str] = []
+    for name in installed_names:
+        res = remove_subagent(name, target_dir=target, cfg=cfg, check_preset=False)
+        if res.get("removed"):
+            removed.append(name)
+    return removed
 

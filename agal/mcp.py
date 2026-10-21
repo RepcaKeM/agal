@@ -147,7 +147,7 @@ def uninstall_mcp(
             if target_key in servers:
                 del servers[target_key]
                 removed = True
-                if not servers and (not state.get("skills") and not state.get("preset")):
+                if not servers and not any(k != "mcpServers" for k in mcp_data):
                     mcp_path.unlink(missing_ok=True)
                 else:
                     _write_json_file(mcp_path, mcp_data)
