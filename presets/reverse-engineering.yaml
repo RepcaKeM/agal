@@ -1,0 +1,9 @@
+name: reverse-engineering
+description: Inżynieria wsteczna aplikacji i plików binarnych (REA)
+skills:
+- reverse-engineer-anything
+- systematic-debugging
+- verification-before-completion
+- using-superpowers
+mcp:
+- rea

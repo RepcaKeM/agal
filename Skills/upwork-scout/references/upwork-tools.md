@@ -34,5 +34,10 @@ takes `org_uid` — get it once per run from `list_accounts` (the account with
   open or submit it on upwork.com. It has no URL and expires 15 minutes after creation
   (`expires_at`, `ttl_seconds: 899` observed 2026-10-07). Submitting happens only through
   `confirm_preview`.
+- **No more than one live preview at a time.** Each `manage_proposals` create replaces
+  the previous preview (`supersedes_previous_preview: true`); the older `preview_id`
+  then returns "Invalid or expired preview_id" (observed 2026-10-07). To send several
+  approved proposals: for each one, rebuild its preview with the approved text and
+  rate, then `confirm_preview` it before building the next.
 - **Proposal counts in search lag.** `find_jobs search` showed 17 proposals; after
   submitting, `list_freelancer_proposals get` insights showed 68 for the same job.
