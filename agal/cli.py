@@ -45,6 +45,13 @@ from agal.sources import (
     remove_source,
     save_sources_registry,
 )
+from agal.subagents import (
+    install_subagent,
+    list_subagents,
+    remove_subagent,
+    save_subagent_template,
+    unprepare_all_subagents,
+)
 from agal.updater import (
     check_for_updates,
     format_update_notice,
@@ -252,6 +259,7 @@ def cmd_remove(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
 
     elif item_type == "preset":
         if scope == "local":
+            unprepare_all_subagents(cfg=cfg)
             res = uninstall_preset(scope=scope, cfg=cfg)
             print(f"\n✅ Uninstalled preset:")
             print(f"   · Skills removed: {len(res['removed_skills'])}")
@@ -404,6 +412,64 @@ def cmd_preset(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
             print(f"⚠️  {e}")
 
 
+def cmd_subagent(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    subparser: argparse.ArgumentParser | None = None,
+) -> None:
+    action = getattr(args, "subagent_action", None)
+    if action == "add":
+        names = args.names
+        if not names:
+            available = list_subagents(cfg)
+            if not available:
+                print("No subagents available.")
+                return
+            items = sorted(available.keys())
+            display_labels = [f"{n:<24}  {available[n].get('description', '')}" for n in items]
+            names = _select_items_cli(items, "Select subagent(s) to add", display_labels=display_labels)
+            if not names:
+                return
+
+        for name in names:
+            try:
+                install_subagent(name, target_dir=Path.cwd(), cfg=cfg)
+                print(f"✅ Installed subagent '{name}'")
+            except Exception as e:
+                print(f"❌ {e}")
+
+    elif action == "remove":
+        for name in args.names:
+            res = remove_subagent(name, target_dir=Path.cwd(), cfg=cfg)
+            if not res.get("removed"):
+                print(f"⚠️  Subagent '{name}' is not installed.")
+            else:
+                print(f"✅ Removed subagent '{name}'")
+
+    elif action == "list":
+        subagents = list_subagents(cfg)
+        if not subagents:
+            print("No subagents available.")
+            return
+        print(f"\n🤖 Available Subagents ({len(subagents)}):")
+        print("─" * 60)
+        for aname, ainfo in sorted(subagents.items()):
+            desc = ainfo.get("description", "")
+            print(f"  · {aname:<32} {desc}")
+        print()
+
+    elif action == "create":
+        try:
+            path = save_subagent_template(args.name, cfg=cfg)
+            print(f"✅ Created subagent template: {path}")
+        except FileExistsError as e:
+            print(f"❌ {e}")
+
+    else:
+        if subparser:
+            subparser.print_help()
+
+
 def cmd_check(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     print("\n🔍 Checking skills and updates...")
 
@@ -533,6 +599,7 @@ def cmd_prepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
 
 
 def cmd_unprepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
+    unprepare_all_subagents(cfg=cfg)
     res = uninstall_preset(scope="local", cfg=cfg)
     print(f"✅ Unprepared: removed {len(res['removed_skills'])} skills, {len(res['removed_mcp'])} MCP servers.")
 
@@ -673,6 +740,20 @@ def main(argv: list[str] | None = None) -> None:
     p_pedit = p_pre_sub.add_parser("edit", help="Edit preset in $EDITOR")
     p_pedit.add_argument("name", help="Preset name")
 
+    # subagent
+    p_subagent = subparsers.add_parser("subagent", help="Manage subagents")
+    p_subagent_sub = p_subagent.add_subparsers(dest="subagent_action")
+    p_sub_add = p_subagent_sub.add_parser("add", help="Add subagent(s)")
+    p_sub_add.add_argument("names", nargs="*", help="Subagent name(s)")
+
+    p_sub_rem = p_subagent_sub.add_parser("remove", help="Remove subagent(s)")
+    p_sub_rem.add_argument("names", nargs="+", help="Subagent name(s)")
+
+    p_subagent_sub.add_parser("list", help="List available subagents")
+
+    p_sub_create = p_subagent_sub.add_parser("create", help="Create new subagent template")
+    p_sub_create.add_argument("name", help="Subagent name")
+
     # update
     p_upd = subparsers.add_parser("update", help="Update git sources")
     p_upd.add_argument("name", nargs="?", help="Specific source name")
@@ -694,7 +775,7 @@ def main(argv: list[str] | None = None) -> None:
     # Pre-parse shortcut: if argv[0] is a known preset name and not a flag or subcommand
     known_commands = {
         "source", "add", "remove", "list", "preset", "update", "check", "status",
-        "prepare", "unprepare", "-h", "--help", "-v", "--version", "--status",
+        "prepare", "unprepare", "subagent", "-h", "--help", "-v", "--version", "--status",
         "--list", "--check", "--config", "--edit", "-e", "--prepare", "--unprepare",
     }
     if argv and argv[0] not in known_commands and not argv[0].startswith("-"):
@@ -742,6 +823,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_list(args, cfg)
     elif args.subcommand == "preset":
         cmd_preset(args, cfg)
+    elif args.subcommand == "subagent":
+        cmd_subagent(args, cfg, p_subagent)
     elif args.subcommand == "prepare":
         cmd_prepare_alias(args, cfg)
     elif args.subcommand == "unprepare":
