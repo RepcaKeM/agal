@@ -17,12 +17,29 @@ from agal.skills import (
 
 VALID_MODELS = {"inherit", "sonnet", "opus", "haiku"}
 VALID_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
-_CURSOR_MODEL_IDS = {
-    "sonnet": "claude-sonnet-5",
-    "haiku": "claude-haiku-5",
-    "opus": "claude-opus-5",
-}
 VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+# OpenCode applies the last matching shell rule. "*" denies every command;
+# a pattern ending in " *" also matches that command with no arguments.
+# https://opencode.ai/docs/agents/
+_OPENCODE_READONLY_SHELL = {
+    "*": "deny",
+    "git status *": "allow",
+    "git diff *": "allow",
+    "git log *": "allow",
+    "git show *": "allow",
+    "git rev-parse *": "allow",
+    "ls *": "allow",
+    "rg *": "allow",
+    "grep *": "allow",
+    "find *": "allow",
+    "cat *": "allow",
+    "pytest *": "allow",
+    "python -m pytest *": "allow",
+    "python3 -m pytest *": "allow",
+    "npm test *": "allow",
+    "pnpm test *": "allow",
+}
+_NO_SHELL_WRITES = "Do not create or edit files, including through shell commands."
 AGY_READ_TOOLS = ["view_file", "grep_search", "list_dir", "find_by_name"]
 AGY_WRITE_TOOLS = ["replace_file_content", "write_to_file"]
 
@@ -237,40 +254,44 @@ def render_adapters(
     if disallowed:
         claude_fm["disallowedTools"] = disallowed
 
-    # Cursor has a single readonly switch, which also blocks the terminal.
-    # Use it only when both editing and commands are denied. A one-sided
-    # restriction is carried in the prompt so the other capability stays usable.
-    cursor_model = "inherit"
-    cursor_base = _CURSOR_MODEL_IDS.get(model)
-    if cursor_base and effort:
-        cursor_model = f"{cursor_base}[effort={effort}]"
+    # Cursor, OpenCode, and Antigravity inherit the calling session's model.
+    # model and effort are written only into the Claude Code adapter.
     cursor_fm: dict[str, Any] = {
         "name": name,
         "description": desc,
-        "model": cursor_model,
+        "model": "inherit",
     }
     cursor_body = body
-    if not edit_files and not run_commands:
+    claude_body = body
+    opencode_body = body
+    agy_body = body
+    if not edit_files and run_commands:
+        note = f"{_NO_SHELL_WRITES} You may run commands."
+        claude_body = _permission_note(note, body)
+        cursor_body = _permission_note(note, body)
+        opencode_body = _permission_note(note, body)
+        agy_body = _permission_note(note, body)
+    elif not edit_files and not run_commands:
         cursor_fm["readonly"] = True
-    elif not edit_files and run_commands:
-        cursor_body = _permission_note(
-            "Do not create or edit files. You may run commands.",
-            body,
-        )
     elif edit_files and not run_commands:
         cursor_body = _permission_note(
             "Do not run shell commands. You may edit files.",
             body,
         )
 
-    # OpenCode
+    # OpenCode's current agent format keys command rules as permission.shell.
+    # The older bash key stays for the coarse allow/deny cases.
+    opencode_permission: dict[str, Any] = {
+        "edit": "allow" if edit_files else "deny",
+    }
+    if not edit_files and run_commands:
+        opencode_permission["shell"] = dict(_OPENCODE_READONLY_SHELL)
+    else:
+        opencode_permission["bash"] = "allow" if run_commands else "deny"
     opencode_fm: dict[str, Any] = {
         "description": desc,
         "mode": "subagent",
-        "permission": {
-            "edit": "allow" if edit_files else "deny",
-            "bash": "allow" if run_commands else "deny",
-        },
+        "permission": opencode_permission,
     }
 
     # Antigravity
@@ -292,10 +313,10 @@ def render_adapters(
         agy_fm["tools"] = tools
 
     rendered = {
-        f".claude/agents/{name}.md": _render_adapter_file(claude_fm, body),
+        f".claude/agents/{name}.md": _render_adapter_file(claude_fm, claude_body),
         f".cursor/agents/{name}.md": _render_adapter_file(cursor_fm, cursor_body),
-        f".opencode/agents/{name}.md": _render_adapter_file(opencode_fm, body),
-        f".agents/agents/{name}/agent.md": _render_adapter_file(agy_fm, body),
+        f".opencode/agents/{name}.md": _render_adapter_file(opencode_fm, opencode_body),
+        f".agents/agents/{name}/agent.md": _render_adapter_file(agy_fm, agy_body),
     }
     if not runtimes:
         return rendered
@@ -354,15 +375,128 @@ def _is_present_mcp(name: str, mcp_keys: set[str]) -> bool:
     return name in mcp_keys or f"{name}-mcp" in mcp_keys or name.removesuffix("-mcp") in mcp_keys
 
 
+def _drop_replaced_dependencies(
+    target: Path,
+    name: str,
+    previous_skills: list[str],
+    previous_mcp: list[str],
+    recorded_skills: list[str],
+    recorded_mcp: list[str],
+    cfg: dict[str, Any] | None,
+) -> None:
+    """Uninstall deps this subagent dropped, unless another owner still needs them."""
+    kept_skills = set(recorded_skills)
+    kept_mcp = set(recorded_mcp)
+    dropped_skills = [s for s in previous_skills if s not in kept_skills]
+    dropped_mcp = [m for m in previous_mcp if not _is_present_mcp(m, kept_mcp)]
+    if not dropped_skills and not dropped_mcp:
+        return
+
+    state = load_local_state(target)
+    other_skills: set[str] = set()
+    other_mcp: set[str] = set()
+    for sub_name, sub in state.get("subagents", {}).items():
+        if sub_name == name:
+            continue
+        other_skills.update(sub.get("skills", []))
+        other_mcp.update(sub.get("mcp", []))
+
+    needed_skills = set(other_skills)
+    needed_mcp = set(other_mcp)
+    preset_skills: set[str] = set()
+    preset_mcp: set[str] = set()
+    preset_resolved = False
+    if state.get("preset"):
+        try:
+            preset = resolve_preset(state["preset"], cfg=cfg)
+            preset_skills = set(preset.get("skills", []))
+            preset_mcp = set(preset.get("mcp", []))
+            preset_resolved = True
+            needed_skills.update(preset_skills)
+            needed_mcp.update(preset_mcp)
+        except Exception:
+            needed_skills = set(state.get("skills", {}))
+            needed_mcp = set(state.get("mcp", {}))
+
+    owned = state.get("subagent_owned", {})
+    owned_skills = set(owned.get("skills", []))
+    owned_mcp = set(owned.get("mcp", []))
+
+    transfer_skills: list[str] = []
+    transfer_mcp: list[str] = []
+    if preset_resolved:
+        transfer_skills = [
+            s for s in dropped_skills
+            if s in owned_skills and s not in other_skills and s in preset_skills
+        ]
+        transfer_mcp = [
+            m for m in dropped_mcp
+            if m in owned_mcp and not _is_present_mcp(m, other_mcp) and _is_present_mcp(m, preset_mcp)
+        ]
+
+    to_uninstall_skills = [
+        s for s in dropped_skills if s in owned_skills and s not in needed_skills
+    ]
+    to_uninstall_mcp = [
+        m for m in dropped_mcp
+        if m in owned_mcp and not _is_present_mcp(m, needed_mcp)
+    ]
+
+    uninstalled_skills: list[str] = []
+    for s in to_uninstall_skills:
+        if uninstall_skill(s, target_dir=target, scope="local"):
+            uninstalled_skills.append(s)
+
+    uninstalled_mcp: list[str] = []
+    for m in to_uninstall_mcp:
+        if uninstall_mcp(m, target_dir=target, scope="local"):
+            uninstalled_mcp.append(m)
+
+    state = load_local_state(target)
+    if "subagent_owned" not in state:
+        return
+    cur_skills = [
+        s for s in state["subagent_owned"].get("skills", [])
+        if s not in uninstalled_skills and s not in transfer_skills
+    ]
+    cur_mcp = [
+        m for m in state["subagent_owned"].get("mcp", [])
+        if m not in uninstalled_mcp and m not in transfer_mcp
+    ]
+    if not cur_skills and not cur_mcp and not state.get("subagents"):
+        state.pop("subagent_owned", None)
+    else:
+        state["subagent_owned"]["skills"] = cur_skills
+        state["subagent_owned"]["mcp"] = cur_mcp
+    if transfer_skills or transfer_mcp:
+        preset_owned = state.setdefault("preset_owned", {"skills": [], "mcp": [], "hooks": []})
+        preset_owned["skills"] = sorted(set(preset_owned.get("skills", [])) | set(transfer_skills))
+        preset_owned["mcp"] = sorted(set(preset_owned.get("mcp", [])) | set(transfer_mcp))
+        preset_owned.setdefault("hooks", list(preset_owned.get("hooks", [])))
+    save_local_state(target, state)
+
+
 def install_subagent(
     name: str,
     target_dir: Path | str | None = None,
     cfg: dict[str, Any] | None = None,
+    all_skills: dict[str, dict[str, Any]] | None = None,
+    all_mcp: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     agent = load_subagent(name, cfg)
     target = (Path(target_dir) if target_dir else Path.cwd()).resolve()
 
+    if all_skills is None:
+        from agal.skills import get_all_skills
+        all_skills = get_all_skills(cfg)
+    if all_mcp is None:
+        from agal.mcp import get_all_mcp_servers
+        all_mcp = get_all_mcp_servers(cfg)
+
     state = load_local_state(target)
+    previous = state.get("subagents", {}).get(name, {})
+    previous_skills = list(previous.get("skills", []))
+    previous_mcp = list(previous.get("mcp", []))
     before_skills = set(state.get("skills", {}).keys())
     before_mcp = set(state.get("mcp", {}).keys())
 
@@ -371,17 +505,17 @@ def install_subagent(
     missing: list[str] = []
 
     for s in agent.get("skills", []):
-        if s in before_skills:
+        try:
+            install_skill(
+                s, target_dir=target, scope="local", cfg=cfg, all_skills=all_skills
+            )
             recorded_skills.append(s)
-        else:
-            try:
-                install_skill(s, target_dir=target, scope="local", cfg=cfg)
-                recorded_skills.append(s)
+            if s not in before_skills:
                 newly_owned_skills.append(s)
                 before_skills.add(s)
-            except (ValueError, FileNotFoundError):
-                print(f"⚠️  Subagent '{name}': skill '{s}' not available (skipped).")
-                missing.append(s)
+        except (ValueError, FileNotFoundError):
+            print(f"⚠️  Subagent '{name}': skill '{s}' not available (skipped).")
+            missing.append(s)
 
     recorded_mcp: list[str] = []
     newly_owned_mcp: list[str] = []
@@ -389,15 +523,17 @@ def install_subagent(
     for m in agent.get("mcp", []):
         if _is_present_mcp(m, before_mcp):
             recorded_mcp.append(m)
-        else:
-            try:
-                install_mcp(m, target_dir=target, scope="local", cfg=cfg)
-                recorded_mcp.append(m)
-                newly_owned_mcp.append(m)
-                before_mcp.add(m)
-            except (ValueError, FileNotFoundError):
-                print(f"⚠️  Subagent '{name}': mcp '{m}' not available (skipped).")
-                missing.append(m)
+            continue
+        try:
+            install_mcp(
+                m, target_dir=target, scope="local", cfg=cfg, all_servers=all_mcp
+            )
+            recorded_mcp.append(m)
+            newly_owned_mcp.append(m)
+            before_mcp.add(m)
+        except (ValueError, FileNotFoundError):
+            print(f"⚠️  Subagent '{name}': mcp '{m}' not available (skipped).")
+            missing.append(m)
 
     if name in state.get("subagents", {}):
         old_files = state["subagents"][name].get("files", [])
@@ -423,6 +559,9 @@ def install_subagent(
     owned["mcp"] = sorted(owned_mcp)
 
     save_local_state(target, state)
+    _drop_replaced_dependencies(
+        target, name, previous_skills, previous_mcp, recorded_skills, recorded_mcp, cfg
+    )
 
     return {
         "name": name,

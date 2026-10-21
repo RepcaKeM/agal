@@ -288,6 +288,58 @@ class TestPresets(unittest.TestCase):
         self.assertEqual(state_after["preset"], "backend")
         self.assertTrue((self.target_dir / ".agents" / "skills" / "database-optimizer").exists())
 
+    @patch("agal.presets.get_all_skills")
+    @patch("agal.presets.get_all_mcp_servers")
+    @patch("agal.skills.get_all_skills")
+    @patch("agal.mcp.get_all_mcp_servers")
+    def test_prepare_keeps_manual_items_when_previous_preset_is_gone(
+        self, mock_mcp_direct, mock_skills_direct, mock_mcp, mock_skills
+    ):
+        from agal.mcp import install_mcp
+        from agal.skills import install_skill, load_local_state, save_local_state
+
+        skill_dir = Path(self.td.name) / "mock_skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\nname: s\ndescription: Use when s.\n---\n", encoding="utf-8")
+
+        mock_data_skills = {
+            name: {"name": name, "path": str(skill_dir), "source": "src"}
+            for name in ("manual-one", "old-skill", "brainstorming")
+        }
+        mock_data_mcp = {
+            name: {"name": name, "config": {"command": "echo"}}
+            for name in ("manual-mcp", "old-mcp", "figma")
+        }
+        mock_skills.return_value = mock_data_skills
+        mock_skills_direct.return_value = mock_data_skills
+        mock_mcp.return_value = mock_data_mcp
+        mock_mcp_direct.return_value = mock_data_mcp
+
+        cfg = {**self.cfg, "core_preset": None}
+        save_preset("fresh", "Fresh", ["brainstorming"], ["figma"], cfg=cfg)
+        install_skill("manual-one", target_dir=self.target_dir, scope="local", cfg=cfg)
+        install_skill("old-skill", target_dir=self.target_dir, scope="local", cfg=cfg)
+        install_mcp("manual-mcp", target_dir=self.target_dir, scope="local", cfg=cfg)
+        install_mcp("old-mcp", target_dir=self.target_dir, scope="local", cfg=cfg)
+        state = load_local_state(self.target_dir)
+        state["preset"] = "overallgood"
+        state.pop("preset_owned", None)
+        save_local_state(self.target_dir, state)
+
+        install_preset("fresh", target_dir=self.target_dir, scope="local", cfg=cfg)
+
+        state = load_local_state(self.target_dir)
+        self.assertEqual(state["preset"], "fresh")
+        for name in ("manual-one", "old-skill", "brainstorming"):
+            self.assertIn(name, state["skills"])
+            self.assertTrue((self.target_dir / ".agents" / "skills" / name).is_dir())
+        for name in ("manual-mcp", "old-mcp", "figma"):
+            self.assertIn(name, state["mcp"])
+        self.assertEqual(state["preset_owned"]["skills"], ["brainstorming"])
+        self.assertEqual(state["preset_owned"]["mcp"], ["figma"])
+        self.assertNotIn("manual-one", state["preset_owned"]["skills"])
+        self.assertNotIn("old-mcp", state["preset_owned"]["mcp"])
+
     @patch("sys.stdout")
     @patch("builtins.input", side_effect=["1, 3"])
     def test_select_items_cli_with_labels(self, mock_input, mock_stdout):

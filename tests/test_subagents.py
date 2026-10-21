@@ -48,6 +48,11 @@ class TestStarterSubagents(unittest.TestCase):
                 self.assertIsInstance(fm["skills"], list)
                 self.assertIsInstance(fm["mcp"], list)
                 self.assertTrue(body.strip())
+                if name in ("implementer", "ui-specialist"):
+                    self.assertIn("git rev-parse --git-dir", body)
+                    self.assertIn("git rev-parse --git-common-dir", body)
+                if name in ("auditor", "debugger", "researcher"):
+                    self.assertIn("including via shell commands", body)
 
 
 class TestSubagentParsing(unittest.TestCase):
@@ -162,7 +167,8 @@ class TestAdapters(unittest.TestCase):
         self.assertEqual(fm["mcpServers"], ["m1"])
         self.assertEqual(fm["disallowedTools"], ["Edit", "Write", "NotebookEdit"])
         self.assertNotIn("tools", fm)
-        self.assertEqual(body, "You review.")
+        self.assertIn("including through shell commands", body)
+        self.assertIn("You review.", body)
 
     def test_claude_model_passthrough_others_inherit(self):
         r = render_adapters({**AGENT, "model": "sonnet"})
@@ -171,14 +177,22 @@ class TestAdapters(unittest.TestCase):
         self.assertEqual(_split(r[".agents/agents/rev/agent.md"])[0]["model"], "inherit")
         self.assertNotIn("model", _split(r[".opencode/agents/rev.md"])[0])
 
-    def test_effort_medium_on_haiku_and_sonnet(self):
-        for model, cursor_id in (("haiku", "claude-haiku-5"), ("sonnet", "claude-sonnet-5")):
+    def test_effort_and_model_stay_on_claude_only(self):
+        for model in ("haiku", "sonnet"):
             rendered = render_adapters({**AGENT, "model": model, "effort": "medium"})
             claude = _split(rendered[".claude/agents/rev.md"])[0]
             self.assertEqual(claude["model"], model)
             self.assertEqual(claude["effort"], "medium")
-            cursor = _split(rendered[".cursor/agents/rev.md"])[0]
-            self.assertEqual(cursor["model"], f"{cursor_id}[effort=medium]")
+            for path in (
+                ".cursor/agents/rev.md",
+                ".opencode/agents/rev.md",
+                ".agents/agents/rev/agent.md",
+            ):
+                text = rendered[path]
+                self.assertNotIn("effort", text)
+                self.assertNotIn("sonnet", text)
+                self.assertNotIn("haiku", text)
+            self.assertEqual(_split(rendered[".cursor/agents/rev.md"])[0]["model"], "inherit")
             self.assertEqual(_split(rendered[".agents/agents/rev/agent.md"])[0]["model"], "inherit")
 
     def test_cursor(self):
@@ -198,10 +212,26 @@ class TestAdapters(unittest.TestCase):
         self.assertIn("Do not run shell commands", edit_body)
 
     def test_opencode(self):
-        fm, _ = _split(self.rendered[".opencode/agents/rev.md"])
+        fm, body = _split(self.rendered[".opencode/agents/rev.md"])
         self.assertEqual(fm["mode"], "subagent")
-        self.assertEqual(fm["permission"], {"edit": "deny", "bash": "allow"})
+        self.assertEqual(fm["permission"]["edit"], "deny")
+        self.assertNotIn("bash", fm["permission"])
+        shell = fm["permission"]["shell"]
+        self.assertEqual(shell["*"], "deny")
+        self.assertEqual(shell["git diff *"], "allow")
+        self.assertEqual(shell["pytest *"], "allow")
+        self.assertIn("including through shell commands", body)
         self.assertNotIn("name", fm)
+        full = render_adapters({**AGENT, "permissions": {"edit_files": True, "run_commands": True}})
+        self.assertEqual(
+            _split(full[".opencode/agents/rev.md"])[0]["permission"],
+            {"edit": "allow", "bash": "allow"},
+        )
+        locked = render_adapters({**AGENT, "permissions": {"edit_files": False, "run_commands": False}})
+        self.assertEqual(
+            _split(locked[".opencode/agents/rev.md"])[0]["permission"],
+            {"edit": "deny", "bash": "deny"},
+        )
 
     def test_antigravity(self):
         fm, _ = _split(self.rendered[".agents/agents/rev/agent.md"])
@@ -221,6 +251,26 @@ class TestAdapters(unittest.TestCase):
         self.assertIn("replace_file_content", fm["tools"])
         self.assertIn("list_dir", fm["tools"])
         self.assertNotIn("run_command", fm["tools"])
+
+    def test_command_runners_ban_shell_writes_and_scouts_stay_readonly(self):
+        cfg = {"subagents_dir": str(REPO_ROOT / "Subagents")}
+        for name in ("auditor", "debugger", "researcher"):
+            rendered = render_adapters(load_subagent(name, cfg))
+            claude_fm, claude_body = _split(rendered[f".claude/agents/{name}.md"])
+            self.assertEqual(claude_fm["disallowedTools"], ["Edit", "Write", "NotebookEdit"])
+            self.assertIn("including through shell commands", claude_body)
+            cursor_fm, cursor_body = _split(rendered[f".cursor/agents/{name}.md"])
+            self.assertNotIn("readonly", cursor_fm)
+            self.assertIn("including through shell commands", cursor_body)
+            opencode_fm, opencode_body = _split(rendered[f".opencode/agents/{name}.md"])
+            self.assertEqual(opencode_fm["permission"]["edit"], "deny")
+            self.assertEqual(opencode_fm["permission"]["shell"]["*"], "deny")
+            self.assertIn("including through shell commands", opencode_body)
+            _, agy_body = _split(rendered[f".agents/agents/{name}/agent.md"])
+            self.assertIn("including through shell commands", agy_body)
+        for name in ("scout-jobs", "scout-linkedin", "upwork"):
+            rendered = render_adapters(load_subagent(name, cfg))
+            self.assertTrue(_split(rendered[f".cursor/agents/{name}.md"])[0]["readonly"])
 
     def test_render_filters_runtimes(self):
         rendered = render_adapters(AGENT, runtimes=["cursor"])
@@ -338,6 +388,58 @@ class TestLifecycle(unittest.TestCase):
         self._install("alpha")
         self._install("alpha")
         self.assertEqual(len(load_local_state(self.target)["subagents"]["alpha"]["files"]), 4)
+
+    def _rewrite(self, name: str, extra: str) -> None:
+        path = Path(self.cfg["subagents_dir"]) / name / "AGENT.md"
+        path.write_text(
+            f"---\nname: {name}\ndescription: Use when {name}.\n{extra}---\nBody\n",
+            encoding="utf-8",
+        )
+
+    def test_reinstall_drops_abandoned_skill_and_refreshes_the_copy(self):
+        self._install("alpha")
+        source = Path(self.cfg["skills_dir"]) / "s2" / "SKILL.md"
+        source.write_text("---\nname: s2\ndescription: Use when s2.\n---\nUpdated\n", encoding="utf-8")
+        self._rewrite("alpha", "skills: [s2]\n")
+        self._install("alpha")
+        state = load_local_state(self.target)
+        self.assertEqual(state["subagents"]["alpha"]["skills"], ["s2"])
+        self.assertNotIn("s1", state["skills"])
+        self.assertNotIn("s1", state.get("subagent_owned", {}).get("skills", []))
+        self.assertFalse(self._has_skill("s1"))
+        self.assertTrue(self._has_skill("s2"))
+        copied = (self.target / ".claude" / "skills" / "s2" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("Updated", copied)
+
+    def test_reinstall_keeps_skill_used_by_another_subagent(self):
+        self._install("alpha")
+        self._install("beta")
+        self._rewrite("alpha", "skills: []\n")
+        self._install("alpha")
+        self.assertFalse(self._has_skill("s1"))
+        self.assertTrue(self._has_skill("s2"))
+        self.assertIn("s2", load_local_state(self.target)["skills"])
+
+    def test_reinstall_keeps_skill_used_by_the_preset(self):
+        self._install("alpha")
+        install_preset("p", target_dir=self.target, cfg=self.cfg)
+        self._rewrite("alpha", "skills: [s2]\n")
+        self._install("alpha")
+        state = load_local_state(self.target)
+        self.assertTrue(self._has_skill("s1"))
+        self.assertIn("s1", state["skills"])
+        self.assertIn("s1", state["preset_owned"]["skills"])
+        self.assertNotIn("s1", state["subagent_owned"]["skills"])
+
+    def test_install_subagent_indexes_sources_once(self):
+        from agal.skills import get_all_skills
+
+        skills = get_all_skills(self.cfg)
+        with patch("agal.skills.get_all_skills", return_value=skills) as mock_skills, \
+                patch("agal.mcp.get_all_mcp_servers", return_value=MCP_FIXTURE) as mock_mcp:
+            self._install("alpha")
+        self.assertEqual(mock_skills.call_count, 1)
+        self.assertEqual(mock_mcp.call_count, 1)
 
     def test_subagent_without_deps_persists_state(self):
         self._install("solo")

@@ -77,11 +77,17 @@ agal --unprepare               # remove everything agal created (preset + subage
 agal
 ```
 
+A project already prepared with an older preset picks up `orchestrator` or
+`uop-b2b-szukanie` by running that prepare again, then adding the subagents
+once more. Adding a subagent again drops skills it no longer uses.
+
 `--prepare` creates, in the project root:
 
 - `.claude/skills/` and `.agents/skills/` — copies of the preset's skills
 - `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — copies of the coding guidelines
-  (skipped if you already have your own file by that name)
+  (skipped if you already have your own file by that name). The ADHD writing
+  rules are appended only to guideline files agal created and tracks, and only
+  for the runtimes selected for this project.
 
 `agal runtime set <claude|cursor|opencode|agy>` limits those files to one IDE/CLI.
 With no selection, every supported environment is prepared.
@@ -138,7 +144,7 @@ Presets can optionally inherit a meta-preset (configured via `core_preset` in `c
 
 While presets configure project-wide skills and MCP tools, modern agent workflows often benefit from **specialized subagents** dedicated to specific domains (e.g. deep research, code auditing, UI styling).
 
-`agal subagent` provisions native agent files for each supported runtime, installs required skills and MCP dependencies into the project, and manages lifecycles with automatic reference counting.
+`agal subagent` provisions native agent files for each supported runtime, installs required skills and MCP dependencies into the project, and manages lifecycles with automatic reference counting. `implementer` and `ui-specialist` edit only inside a linked git worktree the parent agent prepared; they stop when `git rev-parse --git-dir` and `git rev-parse --git-common-dir` print the same path.
 
 ### Supported runtimes & generated files
 

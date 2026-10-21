@@ -451,9 +451,16 @@ def cmd_subagent(
             if not names:
                 return
 
+        from agal.mcp import get_all_mcp_servers as mcp_index
+        from agal.skills import get_all_skills as skill_index
+        all_skills = skill_index(cfg)
+        all_mcp = mcp_index(cfg)
         for name in names:
             try:
-                install_subagent(name, target_dir=Path.cwd(), cfg=cfg)
+                install_subagent(
+                    name, target_dir=Path.cwd(), cfg=cfg,
+                    all_skills=all_skills, all_mcp=all_mcp,
+                )
                 print(f"✅ Installed subagent '{name}'")
             except Exception as e:
                 print(f"❌ {e}")
@@ -559,9 +566,16 @@ def _subagent_wizard(cfg: dict[str, Any]) -> None:
             res = remove_subagent(old_name, target_dir=target, cfg=cfg)
             if res.get("removed"):
                 print(f"✅ Removed subagent '{old_name}'")
+    from agal.mcp import get_all_mcp_servers as mcp_index
+    from agal.skills import get_all_skills as skill_index
+    all_skills = skill_index(cfg)
+    all_mcp = mcp_index(cfg)
     for name in names:
         try:
-            install_subagent(name, target_dir=target, cfg=cfg)
+            install_subagent(
+                name, target_dir=target, cfg=cfg,
+                all_skills=all_skills, all_mcp=all_mcp,
+            )
             print(f"✅ Installed subagent '{name}'")
         except Exception as exc:
             print(f"❌ {exc}")

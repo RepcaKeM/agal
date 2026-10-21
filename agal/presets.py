@@ -352,9 +352,10 @@ def install_preset(
                 prev_mcp = set(old_preset.get("mcp", []))
                 prev_hooks = set(old_preset.get("hooks", []))
             except Exception:
-                prev_skills = set(state.get("skills", {}))
-                prev_mcp = set(state.get("mcp", {}))
-                prev_hooks = set(state.get("hooks", {}))
+                # The old preset file is gone, so nothing here can be attributed
+                # to it. Leave every installed item in place instead of treating
+                # hand-copied skills as preset-owned and deleting them.
+                prev_skills, prev_mcp, prev_hooks = set(), set(), set()
             sub_owned = state.get("subagent_owned", {})
             prev_skills -= set(sub_owned.get("skills", []))
             owned_mcp = set(sub_owned.get("mcp", []))
