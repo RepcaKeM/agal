@@ -321,6 +321,7 @@ class TestCLIIntegration(unittest.TestCase):
                     patch("sys.stdout", stdout_capture),
                     patch("sys.stdin.isatty", return_value=True),
                     patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
+                    patch("builtins.input", return_value=""),
                 ):
                     main(["skill"])
 
@@ -372,6 +373,7 @@ class TestCLIIntegration(unittest.TestCase):
                     patch("sys.stdout", io.StringIO()),
                     patch("sys.stdin.isatty", return_value=True),
                     patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
+                    patch("builtins.input", return_value=""),
                 ):
                     main(["skill"])
 
@@ -409,6 +411,7 @@ class TestCLIIntegration(unittest.TestCase):
                     patch("sys.stdout", io.StringIO()),
                     patch("sys.stdin.isatty", return_value=True),
                     patch("agal.cli._select_items_cli", side_effect=[["skills"], []]),
+                    patch("builtins.input", return_value=""),
                 ):
                     main(["skill"])
                 self.assertEqual(
@@ -430,6 +433,7 @@ class TestCLIIntegration(unittest.TestCase):
                     patch("sys.stdout", io.StringIO()),
                     patch("sys.stdin.isatty", return_value=True),
                     patch("agal.cli._select_items_cli", return_value=["test-skill"]),
+                    patch("builtins.input", return_value=""),
                 ):
                     main(["add", "skill"])
                 self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
@@ -446,7 +450,7 @@ class TestCLIIntegration(unittest.TestCase):
                 with (
                     patch("sys.stdout", io.StringIO()),
                     patch("sys.stdin.isatty", return_value=True),
-                    patch("builtins.input", return_value="10"),
+                    patch("builtins.input", side_effect=["11", ""]),
                     patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
                 ):
                     main([])
@@ -455,7 +459,7 @@ class TestCLIIntegration(unittest.TestCase):
                 with (
                     patch("sys.stdout", io.StringIO()),
                     patch("sys.stdin.isatty", return_value=True),
-                    patch("builtins.input", return_value="1"),
+                    patch("builtins.input", return_value="2"),
                     patch("agal.cli._select_items_cli", return_value=["p2"]),
                 ):
                     main([])

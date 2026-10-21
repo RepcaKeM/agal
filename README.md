@@ -67,6 +67,7 @@ with the rest of this repo.
 ```bash
 cd ~/projects/my-project
 
+agal start                      # guided: IDE/CLI → preset → subagents → extra skills
 agal --prepare orchestrator     # parent session; specialized work goes to subagents
 agal subagent add researcher   # add a dedicated research subagent
 agal --status                  # show active preset and project status
@@ -328,6 +329,7 @@ agal update                                 # pull updates for all sources
 agal status                                 # active local preset & global items
 
 # Project Shortcuts (backward compatible)
+agal start                                  # guided: IDE/CLI, preset, subagents, extra skills
 agal prepare <name>                         # copy skills + MCP into current project
 agal refresh                                # copy installed items again from sources
 agal unprepare                              # cleanly remove everything agal created

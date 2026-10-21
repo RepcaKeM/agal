@@ -115,6 +115,72 @@ class TestCLISubagents(unittest.TestCase):
         with patch("sys.stdin.isatty", return_value=False):
             self.assertIn("add", self._run(["subagent"]))
 
+    def test_start_picks_runtime_preset_subagents_then_extra_skills(self):
+        (self.skills_dir / "s3").mkdir()
+        (self.skills_dir / "s3" / "SKILL.md").write_text(
+            "---\nname: s3\ndescription: Use when s3.\n---\nBody\n", encoding="utf-8"
+        )
+        answers = [["claude"], ["p"], ["beta"], ["s3"]]
+        offered = []
+
+        def pick(items, *args, **kwargs):
+            offered.append(list(items))
+            return answers.pop(0)
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=pick),
+            patch("builtins.input", return_value=""),
+        ):
+            out = self._run(["start"])
+        self.assertIn("Step 4 of 4", out)
+        self.assertEqual(offered[3], ["s3"])
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state.get("runtimes"), ["claude"])
+        self.assertEqual(state.get("preset"), "p")
+        self.assertEqual(list(state.get("subagents", {})), ["beta"])
+        self.assertEqual(sorted(state.get("skills", {})), ["s1", "s2", "s3"])
+        self.assertNotIn("s3", state.get("preset_owned", {}).get("skills", []))
+        self.assertTrue((self.proj_dir / ".claude" / "skills" / "s3").is_dir())
+
+    def test_start_skips_every_step_on_empty_selection(self):
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", return_value=[]),
+            patch("builtins.input", return_value=""),
+        ):
+            self._run(["start"])
+        self.assertEqual(_files(self.proj_dir), [])
+
+    def test_skill_picker_filters_by_name_and_description(self):
+        offered = []
+
+        def pick(items, *args, **kwargs):
+            offered.append(list(items))
+            return []
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", side_effect=["nothing-matches", "WHEN s2"]),
+            patch("agal.cli._select_items_cli", side_effect=pick),
+        ):
+            out = self._run(["add", "skill"])
+        self.assertIn("No skills match 'nothing-matches'", out)
+        self.assertEqual(offered, [["s2"]])
+
+    def test_start_prints_help_when_not_a_tty(self):
+        with patch("sys.stdin.isatty", return_value=False):
+            self.assertIn("usage", self._run(["start"]))
+
+    def test_launcher_option_one_runs_start(self):
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("builtins.input", return_value="1"),
+            patch("agal.cli._start_wizard") as wizard,
+        ):
+            self._run([])
+        wizard.assert_called_once()
+
     def test_bare_subagent_wizard_sets_runtime_then_installs(self):
         with (
             patch("sys.stdin.isatty", return_value=True),

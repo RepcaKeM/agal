@@ -542,7 +542,26 @@ def _subagent_wizard(cfg: dict[str, Any]) -> None:
     """Pick a project runtime, then the subagents to install."""
     target = Path.cwd()
     print(f"\n{ui.bold('Subagents')}")
-    print(ui.dim("Step 1 of 2 — choose the IDE/CLI for this project. Enter skips this step."))
+    _pick_runtimes_step(target, cfg, "Step 1 of 2")
+    _pick_subagents_step(target, cfg, "Step 2 of 2")
+
+
+def _start_wizard(cfg: dict[str, Any]) -> None:
+    """Pick a runtime, a preset, subagents, then skills the first three did not bring."""
+    target = Path.cwd()
+    print(f"\n{ui.bold('Start')}")
+    _pick_runtimes_step(target, cfg, "Step 1 of 4")
+    print(ui.dim("Step 2 of 4 — choose a preset. Enter keeps the current one."))
+    _select_and_prepare_preset(cfg)
+    _pick_subagents_step(target, cfg, "Step 3 of 4")
+    print(ui.dim("Step 4 of 4 — copy extra skills. Enter skips this step."))
+    installed = set(load_local_state(target).get("skills", {}))
+    _install_skills_interactive(cfg, exclude=installed)
+    cmd_status(argparse.Namespace(), cfg)
+
+
+def _pick_runtimes_step(target: Path, cfg: dict[str, Any], step: str) -> None:
+    print(ui.dim(f"{step} — choose the IDE/CLI for this project. Enter skips this step."))
     runtimes = _select_items_cli(list(SUPPORTED_RUNTIMES), "Select IDE/CLI")
     if runtimes:
         _apply_runtimes(target, runtimes, cfg)
@@ -550,11 +569,13 @@ def _subagent_wizard(cfg: dict[str, Any]) -> None:
     else:
         _print_runtimes(target)
 
+
+def _pick_subagents_step(target: Path, cfg: dict[str, Any], step: str) -> None:
     available = list_subagents(cfg)
     if not available:
         print("No subagents available.")
         return
-    print(ui.dim("Step 2 of 2 — choose subagents to install. Enter skips this step."))
+    print(ui.dim(f"{step} — choose subagents to install. Enter skips this step."))
     items = sorted(available)
     labels = [f"{name:<24}  {available[name].get('description', '')}" for name in items]
     names = _select_items_cli(items, "Select the subagent set for this project", display_labels=labels)
@@ -822,12 +843,27 @@ def _unmark_preset_owned_skill(target_dir: Path, skill_name: str) -> None:
     save_local_state(target_dir, state)
 
 
-def _install_skills_interactive(cfg: dict[str, Any], scope: str = "local") -> None:
+def _install_skills_interactive(
+    cfg: dict[str, Any],
+    scope: str = "local",
+    exclude: set[str] | None = None,
+) -> None:
     skills_dict = get_all_skills(cfg)
-    if not skills_dict:
+    names = sorted(name for name in skills_dict if name not in (exclude or set()))
+    if not names:
         print("No skills available.")
         return
-    names = sorted(skills_dict.keys())
+    while True:
+        query = input("Filter by name or description (Enter shows all): ").strip()
+        words = query.lower().split()
+        matched = [
+            name for name in names
+            if all(w in f"{name} {skills_dict[name].get('description', '')}".lower() for w in words)
+        ]
+        if matched:
+            names = matched
+            break
+        print(f"No skills match '{query}'.")
     labels = []
     for sname in names:
         sinfo = skills_dict[sname]
@@ -882,6 +918,21 @@ def _skill_wizard(cfg: dict[str, Any]) -> None:
         _select_and_prepare_preset(cfg)
 
 
+def cmd_start(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    subparser: argparse.ArgumentParser | None = None,
+) -> None:
+    del args
+    if sys.stdin.isatty():
+        try:
+            _start_wizard(cfg)
+        except (EOFError, KeyboardInterrupt):
+            print()
+    elif subparser:
+        subparser.print_help()
+
+
 def cmd_skill(
     args: argparse.Namespace,
     cfg: dict[str, Any],
@@ -910,53 +961,59 @@ def interactive_launcher(cfg: dict[str, Any], parser: argparse.ArgumentParser) -
     ]
     print("\n" + ui.card(title, rows))
     print(f"\n{ui.bold('What would you like to do?')}")
-    print(f"  {ui.cyan('[1]')} 🚀 Prepare a preset in this project    {ui.dim('(agal prepare <name>)')}")
-    print(f"  {ui.cyan('[2]')} 🧹 Clean / Unprepare this project      {ui.dim('(agal unprepare)')}")
-    print(f"  {ui.cyan('[3]')} 🛠️  Create a new custom preset          {ui.dim('(agal preset create <name>)')}")
-    print(f"  {ui.cyan('[4]')} 📋 Browse available skills & MCP       {ui.dim('(agal list)')}")
-    print(f"  {ui.cyan('[5]')} 🌐 Manage connected Git sources        {ui.dim('(agal source list)')}")
-    print(f"  {ui.cyan('[6]')} 📊 View full project status            {ui.dim('(agal status)')}")
-    print(f"  {ui.cyan('[7]')} ❓ Show full CLI help                  {ui.dim('(--help)')}")
-    print(f"  {ui.cyan('[8]')} 🤖 Choose runtime and subagents     {ui.dim('(agal subagent)')}")
-    print(f"  {ui.cyan('[9]')} 🎯 Choose IDE/CLI for this project    {ui.dim('(agal runtime)')}")
-    print(f"  {ui.cyan('[10]')} 📦 Copy skills or choose a preset    {ui.dim('(agal skill)')}")
+    print(f"  {ui.cyan('[1]')} ▶️  Guided setup: IDE, preset, subagents {ui.dim('(agal start)')}")
+    print(f"  {ui.cyan('[2]')} 🚀 Prepare a preset in this project    {ui.dim('(agal prepare <name>)')}")
+    print(f"  {ui.cyan('[3]')} 🧹 Clean / Unprepare this project      {ui.dim('(agal unprepare)')}")
+    print(f"  {ui.cyan('[4]')} 🛠️  Create a new custom preset          {ui.dim('(agal preset create <name>)')}")
+    print(f"  {ui.cyan('[5]')} 📋 Browse available skills & MCP       {ui.dim('(agal list)')}")
+    print(f"  {ui.cyan('[6]')} 🌐 Manage connected Git sources        {ui.dim('(agal source list)')}")
+    print(f"  {ui.cyan('[7]')} 📊 View full project status            {ui.dim('(agal status)')}")
+    print(f"  {ui.cyan('[8]')} ❓ Show full CLI help                  {ui.dim('(--help)')}")
+    print(f"  {ui.cyan('[9]')} 🤖 Choose runtime and subagents     {ui.dim('(agal subagent)')}")
+    print(f"  {ui.cyan('[10]')} 🎯 Choose IDE/CLI for this project    {ui.dim('(agal runtime)')}")
+    print(f"  {ui.cyan('[11]')} 📦 Copy skills or choose a preset    {ui.dim('(agal skill)')}")
     print(f"  {ui.dim('[0] Exit')}\n")
 
     try:
-        choice = input(ui.bold("Select [1-10] > ")).strip()
+        choice = input(ui.bold("Select [1-11] > ")).strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return
 
     if choice == "1":
-        _select_and_prepare_preset(cfg)
+        try:
+            _start_wizard(cfg)
+        except (EOFError, KeyboardInterrupt):
+            print()
     elif choice == "2":
-        cmd_unprepare_alias(argparse.Namespace(), cfg)
+        _select_and_prepare_preset(cfg)
     elif choice == "3":
+        cmd_unprepare_alias(argparse.Namespace(), cfg)
+    elif choice == "4":
         try:
             pname = input("\nEnter new preset name: ").strip()
             if pname:
                 cmd_preset(argparse.Namespace(preset_action="create", name=pname), cfg)
         except (EOFError, KeyboardInterrupt):
             print()
-    elif choice == "4":
-        cmd_list(argparse.Namespace(category="all"), cfg)
     elif choice == "5":
-        cmd_source(argparse.Namespace(source_action="list"), cfg)
+        cmd_list(argparse.Namespace(category="all"), cfg)
     elif choice == "6":
-        cmd_status(argparse.Namespace(), cfg)
+        cmd_source(argparse.Namespace(source_action="list"), cfg)
     elif choice == "7":
-        parser.print_help()
+        cmd_status(argparse.Namespace(), cfg)
     elif choice == "8":
+        parser.print_help()
+    elif choice == "9":
         try:
             _subagent_wizard(cfg)
         except (EOFError, KeyboardInterrupt):
             print()
-    elif choice == "9":
+    elif choice == "10":
         selected = _select_items_cli(list(SUPPORTED_RUNTIMES), "Select IDE/CLI for this project")
         if selected:
             cmd_runtime(argparse.Namespace(runtime_action="set", names=selected), cfg)
-    elif choice == "10":
+    elif choice == "11":
         try:
             _skill_wizard(cfg)
         except (EOFError, KeyboardInterrupt):
@@ -1025,6 +1082,10 @@ def main(argv: list[str] | None = None) -> None:
     p_rem.add_argument("--global", "-g", dest="global_scope", action="store_true", help="Uninstall from global scope")
 
     p_skill = subparsers.add_parser("skill", help="Interactively copy skills or select a preset")
+
+    p_start = subparsers.add_parser(
+        "start", help="Guided setup: IDE/CLI, preset, subagents, then extra skills"
+    )
 
     # list
     p_list = subparsers.add_parser("list", help="List skills, MCP servers, or presets")
@@ -1098,7 +1159,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Pre-parse shortcut: if argv[0] is a known preset name and not a flag or subcommand
     known_commands = {
-        "source", "add", "remove", "list", "skill", "preset", "update", "check", "status",
+        "source", "add", "remove", "list", "skill", "start", "preset", "update", "check", "status",
         "prepare", "unprepare", "refresh", "subagent", "runtime", "target", "ide",
         "-h", "--help", "-v", "--version", "--status",
         "--list", "--check", "--config", "--edit", "-e", "--prepare", "--unprepare",
@@ -1144,6 +1205,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_add(args, cfg, p_add)
     elif args.subcommand == "skill":
         cmd_skill(args, cfg, p_skill)
+    elif args.subcommand == "start":
+        cmd_start(args, cfg, p_start)
     elif args.subcommand == "remove":
         cmd_remove(args, cfg)
     elif args.subcommand == "list":
