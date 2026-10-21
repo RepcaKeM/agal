@@ -1,0 +1,10 @@
+name: uop-b2b-szukanie
+description: Oferty UoP i B2B z JustJoinIT, NoFluffJobs, LinkedIn i Pracuj.pl, zapis do itsaplan LEAD
+skills:
+- job-scout
+- linkedin-jobs
+mcp:
+- polish-job-hub
+- linkedin
+- itsaplan
+- apify

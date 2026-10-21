@@ -89,6 +89,27 @@ def build_routing_block(skills: list[str], skill_paths: dict[str, Path]) -> tupl
     return block, len(rows)
 
 
+ADHD_BLOCK = """
+
+<!-- agal:adhd — added with every preset; removed by --unprepare -->
+## How to write (this project)
+
+Reader has ADHD. These rules apply to every reply in this project.
+1. First line is the next action, not a preamble.
+2. Multi-step work is a numbered list, one action per step.
+3. If something is left open, end with one action that takes under two minutes.
+4. Finish the current issue before offering a second one.
+5. Restate which step this is; do not assume the previous turn is remembered.
+6. Time estimates use concrete units.
+7. State what now works, in one concrete line.
+8. Errors are cause and fix, without alarm words.
+9. Show at most five items per group; keep the rest until asked.
+10. No opener, no recap, no closing pleasantry.
+Safety, a real ambiguity, or an explicit "explain this" overrides brevity.
+<!-- agal:adhd-end -->
+"""
+
+
 def place_context_file(
     target_dir: Path,
     context_path: Path,
@@ -121,7 +142,7 @@ def place_context_file(
             else:
                 skipped.append(fname)
                 continue
-        dest.write_text(source_text + routing_block, encoding="utf-8")
+        dest.write_text(source_text + routing_block + ADHD_BLOCK, encoding="utf-8")
         created.append(fname)
 
     for fname in prev - set(names):

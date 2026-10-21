@@ -25,7 +25,10 @@ from agal.subagents import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-STARTERS = ["researcher", "auditor", "ui-specialist"]
+STARTERS = [
+    "researcher", "auditor", "ui-specialist", "debugger", "implementer",
+    "scout-jobs", "scout-linkedin", "upwork",
+]
 
 
 class TestStarterSubagents(unittest.TestCase):
@@ -65,9 +68,11 @@ class TestSubagentParsing(unittest.TestCase):
         cfg = {"subagents_dir": str(REPO_ROOT / "Subagents")}
         self.assertTrue(set(STARTERS) <= set(list_subagents(cfg)))
         r = load_subagent("researcher", cfg)
-        self.assertEqual(r["model"], "inherit")
+        self.assertEqual(r["model"], "haiku")
+        self.assertEqual(r["effort"], "medium")
         self.assertEqual(r["permissions"], {"edit_files": False, "run_commands": True})
-        self.assertIn("context7-docs", r["skills"])
+        self.assertEqual(r["skills"], ["find-docs"])
+        self.assertEqual(r["mcp"], ["context7"])
         self.assertTrue(r["system_prompt"].startswith("You are a dedicated research subagent."))
 
     def test_defaults_applied(self):
@@ -165,6 +170,16 @@ class TestAdapters(unittest.TestCase):
         self.assertEqual(_split(r[".cursor/agents/rev.md"])[0]["model"], "inherit")
         self.assertEqual(_split(r[".agents/agents/rev/agent.md"])[0]["model"], "inherit")
         self.assertNotIn("model", _split(r[".opencode/agents/rev.md"])[0])
+
+    def test_effort_medium_on_haiku_and_sonnet(self):
+        for model, cursor_id in (("haiku", "claude-haiku-5"), ("sonnet", "claude-sonnet-5")):
+            rendered = render_adapters({**AGENT, "model": model, "effort": "medium"})
+            claude = _split(rendered[".claude/agents/rev.md"])[0]
+            self.assertEqual(claude["model"], model)
+            self.assertEqual(claude["effort"], "medium")
+            cursor = _split(rendered[".cursor/agents/rev.md"])[0]
+            self.assertEqual(cursor["model"], f"{cursor_id}[effort=medium]")
+            self.assertEqual(_split(rendered[".agents/agents/rev/agent.md"])[0]["model"], "inherit")
 
     def test_cursor(self):
         fm, body = _split(self.rendered[".cursor/agents/rev.md"])

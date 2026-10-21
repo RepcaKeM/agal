@@ -16,6 +16,12 @@ from agal.skills import (
 )
 
 VALID_MODELS = {"inherit", "sonnet", "opus", "haiku"}
+VALID_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+_CURSOR_MODEL_IDS = {
+    "sonnet": "claude-sonnet-5",
+    "haiku": "claude-haiku-5",
+    "opus": "claude-opus-5",
+}
 VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 AGY_READ_TOOLS = ["view_file", "grep_search", "list_dir", "find_by_name"]
 AGY_WRITE_TOOLS = ["replace_file_content", "write_to_file"]
@@ -91,6 +97,12 @@ def load_subagent(name: str, cfg: dict[str, Any] | None = None) -> dict[str, Any
             f"Invalid model '{model}' in {agent_file}. Must be one of: {', '.join(sorted(VALID_MODELS))}"
         )
 
+    effort = fm.get("effort")
+    if effort is not None and effort not in VALID_EFFORTS:
+        raise ValueError(
+            f"Invalid effort '{effort}' in {agent_file}. Must be one of: {', '.join(sorted(VALID_EFFORTS))}"
+        )
+
     skills = fm.get("skills", [])
     if skills is None:
         skills = []
@@ -118,6 +130,7 @@ def load_subagent(name: str, cfg: dict[str, Any] | None = None) -> dict[str, Any
         "name": name,
         "description": desc.strip(),
         "model": model,
+        "effort": effort,
         "permissions": permissions,
         "skills": list(skills),
         "mcp": list(mcp),
@@ -196,6 +209,7 @@ def render_adapters(
     name = agent["name"]
     desc = agent["description"]
     model = agent.get("model", "inherit")
+    effort = agent.get("effort")
     body = agent.get("system_prompt", "")
     perms = agent.get("permissions") or {}
     edit_files = perms.get("edit_files", True)
@@ -209,6 +223,8 @@ def render_adapters(
         "description": desc,
         "model": model,
     }
+    if effort:
+        claude_fm["effort"] = effort
     if skills:
         claude_fm["skills"] = list(skills)
     if mcp:
@@ -224,10 +240,14 @@ def render_adapters(
     # Cursor has a single readonly switch, which also blocks the terminal.
     # Use it only when both editing and commands are denied. A one-sided
     # restriction is carried in the prompt so the other capability stays usable.
+    cursor_model = "inherit"
+    cursor_base = _CURSOR_MODEL_IDS.get(model)
+    if cursor_base and effort:
+        cursor_model = f"{cursor_base}[effort={effort}]"
     cursor_fm: dict[str, Any] = {
         "name": name,
         "description": desc,
-        "model": "inherit",
+        "model": cursor_model,
     }
     cursor_body = body
     if not edit_files and not run_commands:

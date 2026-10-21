@@ -42,8 +42,8 @@ Optional but recommended: `fzf` (interactive preset/skill/subagent picker).
 ## Skills & subagents are bundled (Batteries Included)
 
 This repo ships with curated, high-quality libraries ready out of the box:
-- **Agent skills** under the `Skills/` directory (sourced from projects like `superpowers`, `agency-agents` and `caveman` under MIT license).
-- **Starter subagents** under the `Subagents/` directory (`researcher`, `auditor`, `ui-specialist`).
+- **Agent skills** under the `Skills/` directory. Third-party skills come from projects like `superpowers`, `agency-agents` and `caveman` (MIT). First-party skills shipped by agal are `job-scout`, `linkedin-jobs`, `sales-writing`, and `upwork-scout`.
+- **Starter subagents** under the `Subagents/` directory (`researcher`, `auditor`, `debugger`, `implementer`, `ui-specialist`, `scout-jobs`, `scout-linkedin`, `upwork`).
 
 By default, the installer automatically configures `agal` to use these bundled libraries. You don't need to download or configure any external library.
 
@@ -67,7 +67,7 @@ with the rest of this repo.
 ```bash
 cd ~/projects/my-project
 
-agal --prepare fullstack       # link skills + guidelines into the project
+agal --prepare orchestrator     # parent session; specialized work goes to subagents
 agal subagent add researcher   # add a dedicated research subagent
 agal --status                  # show active preset and project status
 # ... run claude / cursor / opencode / agy ...
@@ -196,7 +196,6 @@ permissions:                # optional tool restrictions (both default to true)
   edit_files: false
   run_commands: true
 skills:                     # optional list of required skill names
-  - context7-docs
   - find-docs
 mcp:                        # optional list of required MCP server names
   - context7

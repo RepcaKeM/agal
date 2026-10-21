@@ -1,9 +1,0 @@
-name: jobs
-description: Multi-board tech job scout (JustJoinIT, NoFluffJobs, LinkedIn, Pracuj.pl) -> taski w itsaplan LEAD
-skills:
-- job-scout
-mcp:
-- polish-job-hub
-- linkedin
-- itsaplan
-- apify

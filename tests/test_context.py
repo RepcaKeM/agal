@@ -74,6 +74,10 @@ class TestContext(unittest.TestCase):
         created2 = place_context_file(self.target_dir, self.guideline_src, copy=True, routing_block="\nrouting")
         self.assertEqual(sorted(created2), sorted(CONTEXT_FILENAMES))
         self.assertIn("routing", (self.target_dir / "AGENTS.md").read_text(encoding="utf-8"))
+        agents = (self.target_dir / "AGENTS.md").read_text(encoding="utf-8")
+        claude = (self.target_dir / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertEqual(agents.count("Reader has ADHD."), 1)
+        self.assertIn("First line is the next action", claude)
 
         # 3. Remove files created by agal
         removed = remove_context_file(self.target_dir)
