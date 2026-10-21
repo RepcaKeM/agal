@@ -216,9 +216,11 @@ class TestCLISubagents(unittest.TestCase):
         with (
             patch("sys.stdin.isatty", return_value=True),
             patch("agal.cli._select_items_cli", side_effect=[[], ["solo"]]),
+            patch("builtins.input", return_value="y"),
         ):
             out = self._run(["subagent"])
 
+        self.assertIn("alpha", out.split("Removed subagent")[0])
         self.assertIn("Removed subagent 'alpha'", out)
         self.assertIn("Installed subagent 'solo'", out)
         self.assertFalse((self.proj_dir / ".claude" / "agents" / "alpha.md").exists())
@@ -229,6 +231,18 @@ class TestCLISubagents(unittest.TestCase):
         state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
         self.assertEqual(state.get("preset"), "p")
         self.assertEqual(list(state.get("subagents", {}).keys()), ["solo"])
+
+    def test_subagent_wizard_declined_removal_keeps_previous_subagents(self):
+        self._run(["subagent", "add", "alpha"])
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=[[], ["solo"]]),
+            patch("builtins.input", return_value=""),
+        ):
+            out = self._run(["subagent"])
+        self.assertNotIn("Removed subagent", out)
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(state.get("subagents", {})), ["alpha", "solo"])
 
     def test_subagent_wizard_empty_selection_keeps_installed_subagents(self):
         self._run(["subagent", "add", "alpha"])

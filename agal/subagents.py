@@ -5,8 +5,8 @@ from typing import Any
 import re
 import yaml
 
-from agal.config import LOCAL_STATE_FILE, get_subagents_dir
-from agal.mcp import install_mcp, uninstall_mcp
+from agal.config import LOCAL_STATE_FILE, get_subagents_dir, skill_rel_dirs_for_runtimes
+from agal.mcp import install_mcp, mcp_matches, uninstall_mcp
 from agal.presets import resolve_preset
 from agal.skills import (
     install_skill,
@@ -38,6 +38,10 @@ _OPENCODE_READONLY_SHELL = {
     "python3 -m pytest *": "allow",
     "npm test *": "allow",
     "pnpm test *": "allow",
+    "find * -delete*": "deny",
+    "find * -exec*": "deny",
+    "* > *": "deny",
+    "* >> *": "deny",
 }
 _NO_SHELL_WRITES = "Do not create or edit files, including through shell commands."
 AGY_READ_TOOLS = ["view_file", "grep_search", "list_dir", "find_by_name"]
@@ -279,13 +283,12 @@ def render_adapters(
             body,
         )
 
-    # OpenCode's current agent format keys command rules as permission.shell.
-    # The older bash key stays for the coarse allow/deny cases.
+    # OpenCode 1.x keys command rules as permission.bash.
     opencode_permission: dict[str, Any] = {
         "edit": "allow" if edit_files else "deny",
     }
     if not edit_files and run_commands:
-        opencode_permission["shell"] = dict(_OPENCODE_READONLY_SHELL)
+        opencode_permission["bash"] = dict(_OPENCODE_READONLY_SHELL)
     else:
         opencode_permission["bash"] = "allow" if run_commands else "deny"
     opencode_fm: dict[str, Any] = {
@@ -371,10 +374,6 @@ def unmaterialize_adapters(files: list[str], target_dir: Path | str) -> None:
             pass
 
 
-def _is_present_mcp(name: str, mcp_keys: set[str]) -> bool:
-    return name in mcp_keys or f"{name}-mcp" in mcp_keys or name.removesuffix("-mcp") in mcp_keys
-
-
 def _drop_replaced_dependencies(
     target: Path,
     name: str,
@@ -388,7 +387,7 @@ def _drop_replaced_dependencies(
     kept_skills = set(recorded_skills)
     kept_mcp = set(recorded_mcp)
     dropped_skills = [s for s in previous_skills if s not in kept_skills]
-    dropped_mcp = [m for m in previous_mcp if not _is_present_mcp(m, kept_mcp)]
+    dropped_mcp = [m for m in previous_mcp if not mcp_matches(m, kept_mcp)]
     if not dropped_skills and not dropped_mcp:
         return
 
@@ -431,7 +430,7 @@ def _drop_replaced_dependencies(
         ]
         transfer_mcp = [
             m for m in dropped_mcp
-            if m in owned_mcp and not _is_present_mcp(m, other_mcp) and _is_present_mcp(m, preset_mcp)
+            if m in owned_mcp and not mcp_matches(m, other_mcp) and mcp_matches(m, preset_mcp)
         ]
 
     to_uninstall_skills = [
@@ -439,7 +438,7 @@ def _drop_replaced_dependencies(
     ]
     to_uninstall_mcp = [
         m for m in dropped_mcp
-        if m in owned_mcp and not _is_present_mcp(m, needed_mcp)
+        if m in owned_mcp and not mcp_matches(m, needed_mcp)
     ]
 
     uninstalled_skills: list[str] = []
@@ -472,7 +471,6 @@ def _drop_replaced_dependencies(
         preset_owned = state.setdefault("preset_owned", {"skills": [], "mcp": [], "hooks": []})
         preset_owned["skills"] = sorted(set(preset_owned.get("skills", [])) | set(transfer_skills))
         preset_owned["mcp"] = sorted(set(preset_owned.get("mcp", [])) | set(transfer_mcp))
-        preset_owned.setdefault("hooks", list(preset_owned.get("hooks", [])))
     save_local_state(target, state)
 
 
@@ -503,8 +501,13 @@ def install_subagent(
     recorded_skills: list[str] = []
     newly_owned_skills: list[str] = []
     missing: list[str] = []
+    rel_dirs = skill_rel_dirs_for_runtimes(state.get("runtimes") or None)
 
     for s in agent.get("skills", []):
+        # An existing copy may carry local edits; agal refresh updates it.
+        if any((target / rel / s).exists() for rel in rel_dirs):
+            recorded_skills.append(s)
+            continue
         try:
             install_skill(
                 s, target_dir=target, scope="local", cfg=cfg, all_skills=all_skills
@@ -521,7 +524,7 @@ def install_subagent(
     newly_owned_mcp: list[str] = []
 
     for m in agent.get("mcp", []):
-        if _is_present_mcp(m, before_mcp):
+        if mcp_matches(m, before_mcp):
             recorded_mcp.append(m)
             continue
         try:
@@ -628,11 +631,11 @@ def remove_subagent(
         ]
         transfer_mcp = [
             m for m in owned_mcp
-            if not _is_present_mcp(m, other_mcp) and _is_present_mcp(m, preset_mcp)
+            if not mcp_matches(m, other_mcp) and mcp_matches(m, preset_mcp)
         ]
 
     to_uninstall_skills = [s for s in owned_skills if s not in needed_skills]
-    to_uninstall_mcp = [m for m in owned_mcp if not _is_present_mcp(m, needed_mcp)]
+    to_uninstall_mcp = [m for m in owned_mcp if not mcp_matches(m, needed_mcp)]
 
     uninstalled_skills: list[str] = []
     for s in to_uninstall_skills:
@@ -663,7 +666,6 @@ def remove_subagent(
         preset_owned = state.setdefault("preset_owned", {"skills": [], "mcp": [], "hooks": []})
         preset_owned["skills"] = sorted(set(preset_owned.get("skills", [])) | set(transfer_skills))
         preset_owned["mcp"] = sorted(set(preset_owned.get("mcp", [])) | set(transfer_mcp))
-        preset_owned.setdefault("hooks", list(preset_owned.get("hooks", [])))
     save_local_state(target, state)
 
     return {

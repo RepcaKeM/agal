@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Collection
 
 from agal.config import (
     load_config,
@@ -23,7 +23,7 @@ PROJECT_MCP_FILES = (LOCAL_MCP_FILE, CURSOR_MCP_FILE)
 CLAUDE_GLOBAL_CONFIG = Path.home() / ".claude.json"
 
 
-def _mcp_key(server_name: str, servers: dict[str, Any]) -> str | None:
+def _mcp_key(server_name: str, servers: Collection[str]) -> str | None:
     if server_name in servers:
         return server_name
     suffixed = f"{server_name}-mcp"
@@ -33,6 +33,11 @@ def _mcp_key(server_name: str, servers: dict[str, Any]) -> str | None:
     if stripped in servers:
         return stripped
     return None
+
+
+def mcp_matches(server_name: str, pool: Collection[str]) -> bool:
+    """True when pool holds server_name, with or without the -mcp suffix."""
+    return _mcp_key(server_name, pool) is not None
 
 
 def _drop_server(path: Path, server_name: str, project_root: Path) -> bool:

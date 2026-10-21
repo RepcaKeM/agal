@@ -215,11 +215,15 @@ class TestAdapters(unittest.TestCase):
         fm, body = _split(self.rendered[".opencode/agents/rev.md"])
         self.assertEqual(fm["mode"], "subagent")
         self.assertEqual(fm["permission"]["edit"], "deny")
-        self.assertNotIn("bash", fm["permission"])
-        shell = fm["permission"]["shell"]
-        self.assertEqual(shell["*"], "deny")
-        self.assertEqual(shell["git diff *"], "allow")
-        self.assertEqual(shell["pytest *"], "allow")
+        self.assertNotIn("shell", fm["permission"])
+        bash = fm["permission"]["bash"]
+        self.assertEqual(bash["*"], "deny")
+        self.assertEqual(bash["git diff *"], "allow")
+        self.assertEqual(bash["pytest *"], "allow")
+        rules = list(bash)
+        self.assertEqual(bash["find * -delete*"], "deny")
+        self.assertGreater(rules.index("find * -delete*"), rules.index("find *"))
+        self.assertEqual(bash["* > *"], "deny")
         self.assertIn("including through shell commands", body)
         self.assertNotIn("name", fm)
         full = render_adapters({**AGENT, "permissions": {"edit_files": True, "run_commands": True}})
@@ -264,7 +268,7 @@ class TestAdapters(unittest.TestCase):
             self.assertIn("including through shell commands", cursor_body)
             opencode_fm, opencode_body = _split(rendered[f".opencode/agents/{name}.md"])
             self.assertEqual(opencode_fm["permission"]["edit"], "deny")
-            self.assertEqual(opencode_fm["permission"]["shell"]["*"], "deny")
+            self.assertEqual(opencode_fm["permission"]["bash"]["*"], "deny")
             self.assertIn("including through shell commands", opencode_body)
             _, agy_body = _split(rendered[f".agents/agents/{name}/agent.md"])
             self.assertIn("including through shell commands", agy_body)
@@ -396,7 +400,7 @@ class TestLifecycle(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def test_reinstall_drops_abandoned_skill_and_refreshes_the_copy(self):
+    def test_reinstall_drops_abandoned_skill_and_keeps_the_copy(self):
         self._install("alpha")
         source = Path(self.cfg["skills_dir"]) / "s2" / "SKILL.md"
         source.write_text("---\nname: s2\ndescription: Use when s2.\n---\nUpdated\n", encoding="utf-8")
@@ -409,7 +413,17 @@ class TestLifecycle(unittest.TestCase):
         self.assertFalse(self._has_skill("s1"))
         self.assertTrue(self._has_skill("s2"))
         copied = (self.target / ".claude" / "skills" / "s2" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("Updated", copied)
+        self.assertNotIn("Updated", copied)
+
+    def test_install_keeps_hand_edited_skill(self):
+        local = self.target / ".claude" / "skills" / "s1"
+        local.mkdir(parents=True)
+        (local / "SKILL.md").write_text("My edits\n", encoding="utf-8")
+        self._install("alpha")
+        self.assertEqual((local / "SKILL.md").read_text(encoding="utf-8"), "My edits\n")
+        self.assertNotIn("s1", load_local_state(self.target)["subagent_owned"]["skills"])
+        self._remove("alpha")
+        self.assertEqual((local / "SKILL.md").read_text(encoding="utf-8"), "My edits\n")
 
     def test_reinstall_keeps_skill_used_by_another_subagent(self):
         self._install("alpha")

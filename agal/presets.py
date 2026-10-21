@@ -18,7 +18,7 @@ from agal.context import (
     remove_context_file,
 )
 from agal.hooks import install_hook, uninstall_hook
-from agal.mcp import install_mcp, uninstall_mcp
+from agal.mcp import install_mcp, mcp_matches, uninstall_mcp
 from agal.skills import (
     install_skill,
     load_local_state,
@@ -299,10 +299,6 @@ def create_preset_interactive(name: str, cfg: dict[str, Any] | None = None) -> P
     return path
 
 
-def _mcp_matches(name: str, pool: set[str]) -> bool:
-    return name in pool or f"{name}-mcp" in pool or name.removesuffix("-mcp") in pool
-
-
 def _claim_for_subagent(target: Path, kind: str, item_name: str) -> None:
     fresh = load_local_state(target)
     owned = fresh.setdefault("subagent_owned", {})
@@ -359,7 +355,7 @@ def install_preset(
             sub_owned = state.get("subagent_owned", {})
             prev_skills -= set(sub_owned.get("skills", []))
             owned_mcp = set(sub_owned.get("mcp", []))
-            prev_mcp = {item for item in prev_mcp if not _mcp_matches(item, owned_mcp)}
+            prev_mcp = {item for item in prev_mcp if not mcp_matches(item, owned_mcp)}
             prev_hooks -= set(sub_owned.get("hooks", []))
         else:
             prev_skills, prev_mcp, prev_hooks = set(), set(), set()
@@ -377,7 +373,7 @@ def install_preset(
         manual_skills = set(state.get("skills", {})) - prev_skills - sub_skills
         manual_mcp = {
             item for item in state.get("mcp", {})
-            if not _mcp_matches(item, prev_mcp) and not _mcp_matches(item, sub_mcp)
+            if not mcp_matches(item, prev_mcp) and not mcp_matches(item, sub_mcp)
         }
         manual_hooks = set(state.get("hooks", {})) - prev_hooks
 
@@ -390,9 +386,9 @@ def install_preset(
             elif sname not in new_skills:
                 uninstall_skill(sname, target_dir=target, scope="local")
         for mname in sorted(prev_mcp):
-            if _mcp_matches(mname, sub_mcp) and not _mcp_matches(mname, new_mcp):
+            if mcp_matches(mname, sub_mcp) and not mcp_matches(mname, new_mcp):
                 _claim_for_subagent(target, "mcp", mname)
-            elif not _mcp_matches(mname, new_mcp):
+            elif not mcp_matches(mname, new_mcp):
                 uninstall_mcp(mname, target_dir=target, scope="local")
         for hname in sorted(prev_hooks):
             if hname not in new_hooks:
@@ -484,7 +480,7 @@ def install_preset(
             ),
             "mcp": sorted(
                 item["mcp"] for item in installed_mcp
-                if item["mcp"] not in manual_mcp and not _mcp_matches(item["mcp"], owned_mcp_now)
+                if item["mcp"] not in manual_mcp and not mcp_matches(item["mcp"], owned_mcp_now)
             ),
             "hooks": sorted(
                 item["hook"] for item in installed_hooks

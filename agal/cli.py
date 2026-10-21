@@ -557,15 +557,19 @@ def _subagent_wizard(cfg: dict[str, Any]) -> None:
     print(ui.dim("Step 2 of 2 — choose subagents to install. Enter skips this step."))
     items = sorted(available)
     labels = [f"{name:<24}  {available[name].get('description', '')}" for name in items]
-    names = _select_items_cli(items, "Select subagent(s) to add", display_labels=labels)
+    names = _select_items_cli(items, "Select the subagent set for this project", display_labels=labels)
     if not names:
         return
     current_subs = list(load_local_state(target).get("subagents", {}).keys())
-    for old_name in current_subs:
-        if old_name not in names:
-            res = remove_subagent(old_name, target_dir=target, cfg=cfg)
-            if res.get("removed"):
-                print(f"✅ Removed subagent '{old_name}'")
+    dropped = [old_name for old_name in current_subs if old_name not in names]
+    if dropped:
+        print(f"Not selected, installed now: {', '.join(dropped)}")
+        if input("Remove them? [y/N] ").strip().lower() != "y":
+            dropped = []
+    for old_name in dropped:
+        res = remove_subagent(old_name, target_dir=target, cfg=cfg)
+        if res.get("removed"):
+            print(f"✅ Removed subagent '{old_name}'")
     from agal.mcp import get_all_mcp_servers as mcp_index
     from agal.skills import get_all_skills as skill_index
     all_skills = skill_index(cfg)
