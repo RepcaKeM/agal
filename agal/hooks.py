@@ -19,6 +19,7 @@ def install_hook(
     target_dir: Path | None = None,
     scope: str = "local",
     cfg: dict[str, Any] | None = None,
+    all_hooks: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Installs an agent lifecycle hook into .claude/hooks or global hooks directory.
@@ -26,7 +27,8 @@ def install_hook(
     if cfg is None:
         cfg = load_config()
 
-    all_hooks = get_all_hooks(cfg)
+    if all_hooks is None:
+        all_hooks = get_all_hooks(cfg)
     if hook_name not in all_hooks:
         raise ValueError(f"Hook '{hook_name}' not found in any registered source.")
 

@@ -4,7 +4,7 @@ Per-project & user-level **skill & MCP presets** and **subagents** for **Claude 
 
 By default every agent CLI discovers *all* available skills — context noise, weaker
 activation, wasted tokens. `agal` inverts this: you define a **preset** (e.g.
-`backend-dev`, `wireframing`), and `agal` links only those skills into the project.
+`backend-dev`, `wireframing`), and `agal` copies only those skills into the project.
 The agent sees a small, relevant set instead of the global pile.
 
 In addition to presets, `agal` configures specialized **subagents** with scoped
@@ -79,9 +79,12 @@ agal
 
 `--prepare` creates, in the project root:
 
-- `.claude/skills/` and `.agents/skills/` — only the preset's skills
-- `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — the coding guidelines
+- `.claude/skills/` and `.agents/skills/` — copies of the preset's skills
+- `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — copies of the coding guidelines
   (skipped if you already have your own file by that name)
+
+`agal runtime set <claude|cursor|opencode|agy>` limits those files to one IDE/CLI.
+With no selection, every supported environment is prepared.
 
 Everything is tracked by markers; `--unprepare` removes only what `agal` made and
 never touches your own files.
@@ -151,6 +154,9 @@ When you add a subagent (`agal subagent add <name>`), `agal` writes native proje
 ### Commands
 
 ```bash
+# Two-step menu: pick IDE/CLI, then pick subagents to install
+agal subagent
+
 # List all available subagents in your subagents library
 agal subagent list
 
@@ -162,6 +168,14 @@ agal subagent remove researcher
 
 # Scaffold a new subagent definition template in <subagents_dir>/<name>/AGENT.md
 agal subagent create my-agent
+
+# Show one subagent's permissions and whether its skills/MCP are available
+agal subagent info researcher
+
+# Prepare only the environments you use (stored in this project's .agal_state.json)
+agal runtime set cursor
+agal runtime list
+agal runtime reset          # all of: claude, cursor, opencode, agy
 
 # Clean up all subagents, skills, MCP servers, and presets from current project
 agal unprepare
@@ -209,9 +223,9 @@ You are a dedicated research subagent. Your role is strictly investigative: expl
 | Runtime | `edit_files: false` | `run_commands: false` |
 |---|---|---|
 | **Claude Code** | `disallowedTools: [Edit, Write, NotebookEdit]` | `disallowedTools: [Bash]` |
-| **Cursor** | `readonly: true` | `readonly: true` |
+| **Cursor** | prompt restriction while commands stay available (`readonly: true` only when both are false) | prompt restriction while editing stays available (`readonly: true` only when both are false) |
 | **OpenCode** | `permission.edit: deny` | `permission.bash: deny` |
-| **Antigravity** | `tools` whitelist omitting edit/write tools | `tools` whitelist omitting `run_command` |
+| **Antigravity** | read tools (`view_file`, `grep_search`, `list_dir`, `find_by_name`) plus `run_command` | read tools plus `replace_file_content` and `write_to_file` |
 
 ### Dependency reference counting & cleanup
 
@@ -226,21 +240,20 @@ When removing a subagent (`agal subagent remove <name>`):
 - Running `agal unprepare` or `agal --unprepare` cleanly tears down all subagents before unlinking preset resources.
 
 > [!IMPORTANT]
-> **MCP limitation:** `agal` configures MCP servers in project-level `.mcp.json`. Currently, **only Claude Code** reads project-level `.mcp.json`. Other runtimes (Cursor, OpenCode, Antigravity) do not read project `.mcp.json` or configure MCP servers globally. This limitation applies to both presets and subagents.
+> **MCP files:** Claude Code reads project `.mcp.json`. When this project's runtime selection includes Cursor, `agal` also writes `.cursor/mcp.json`. OpenCode and Antigravity do not read either file. A project that has not run `agal runtime set` keeps the previous behavior and writes only `.mcp.json`.
 
 ---
 
-## Remote / portable mode (`--remote`)
+## Copies, not symlinks
 
-Symlinks don't survive cloud agents (Claude Code Web, Cursor cloud) or a fresh
-`git clone` on another machine. For portable setups, copy content instead:
+Skills and guideline files are always copied into the project, so the result
+survives cloud agents and a fresh clone. `--remote` / `--copy` are still accepted
+and do the same thing. Re-run `agal prepare` after you edit a skill in the library.
 
 ```bash
-agal --prepare backend-dev --remote   # copies skill + guideline content
-git add .agents .claude AGENTS.md CLAUDE.md GEMINI.md KIMI.md   # commit with the project
+agal --prepare backend-dev
+git add .agents .claude AGENTS.md CLAUDE.md GEMINI.md KIMI.md
 ```
-
-Trade-off: edits in your library no longer propagate — re-run `--prepare`.
 
 ---
 
@@ -291,6 +304,14 @@ agal subagent list                          # list available subagents
 agal subagent add [name...]                 # install subagent(s) (fzf / picker if omitted)
 agal subagent remove <name...>              # remove subagent(s) and unused dependencies
 agal subagent create <name>                 # scaffold new subagent template in subagents_dir
+agal subagent info <name>                   # permissions and dependency availability
+
+# Project IDE/CLI (filters skills, MCP, guidelines, and subagent files)
+agal runtime                                # show or pick IDE/CLI for this project
+agal runtime set <claude|cursor|opencode|agy>...
+agal runtime list
+agal runtime reset                          # prepare every supported IDE/CLI
+# aliases: agal target, agal ide
 
 # Diagnostics & Updates
 agal check                                  # validate metadata & check remote updates

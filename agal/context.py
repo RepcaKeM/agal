@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from agal.config import AGAL_CONTEXT_MARKER, CONTEXT_FILENAMES
+from agal.config import (
+    AGAL_CONTEXT_MARKER,
+    CONTEXT_FILENAMES,
+    context_filenames_for_runtimes,
+)
 
 _USE_WHEN_RE = re.compile(
     r"\bUse(?:\s+this)?\s+(?:when|before|during|after|for)\s+(.+?)(?:\.\s|\.\Z|\Z)",
@@ -85,23 +89,31 @@ def build_routing_block(skills: list[str], skill_paths: dict[str, Path]) -> tupl
     return block, len(rows)
 
 
-def place_context_file(target_dir: Path, context_path: Path,
-                       copy: bool = False, routing_block: str = "") -> list[str]:
+def place_context_file(
+    target_dir: Path,
+    context_path: Path,
+    copy: bool = True,
+    routing_block: str = "",
+    filenames: list[str] | None = None,
+) -> list[str]:
     """
-    Creates AGENTS.md + CLAUDE/GEMINI/KIMI.md in target_dir.
+    Writes guideline files into target_dir.
+
+    Files are always copies. ``copy`` is accepted so existing callers keep working.
+    ``filenames`` limits the set; None writes every context filename.
     """
+    del copy
     src = context_path.expanduser()
     if not src.exists():
         return []
 
+    names = list(filenames) if filenames is not None else list(CONTEXT_FILENAMES)
     marker = target_dir / AGAL_CONTEXT_MARKER
     prev = set(marker.read_text().split()) if marker.exists() else set()
-
-    must_copy = copy or bool(routing_block)
-    source_text = src.read_text(encoding="utf-8") if must_copy else None
+    source_text = src.read_text(encoding="utf-8")
 
     created, skipped = [], []
-    for fname in CONTEXT_FILENAMES:
+    for fname in names:
         dest = target_dir / fname
         if dest.exists() or dest.is_symlink():
             if fname in prev:
@@ -109,19 +121,60 @@ def place_context_file(target_dir: Path, context_path: Path,
             else:
                 skipped.append(fname)
                 continue
-        if must_copy:
-            dest.write_text(source_text + routing_block, encoding="utf-8")
-        else:
-            dest.symlink_to(src.resolve())
+        dest.write_text(source_text + routing_block, encoding="utf-8")
         created.append(fname)
 
-    all_tracked = (prev | set(created)) - set(skipped)
-    if all_tracked:
-        marker.write_text(" ".join(sorted(all_tracked)) + "\n")
+    for fname in prev - set(names):
+        path = target_dir / fname
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+
+    tracked = (set(created) | (prev & set(names))) - set(skipped)
+    if tracked:
+        marker.write_text(" ".join(sorted(tracked)) + "\n")
     elif marker.exists():
         marker.unlink()
 
     return created
+
+
+def sync_context_files(target_dir: Path) -> None:
+    """Keep guideline files aligned with the project's selected runtimes."""
+    from agal.skills import load_local_state
+
+    marker = target_dir / AGAL_CONTEXT_MARKER
+    if not marker.is_file():
+        return
+
+    tracked = [name for name in marker.read_text().split() if name]
+    wanted = context_filenames_for_runtimes(load_local_state(target_dir).get("runtimes") or None)
+    content = None
+    for name in tracked:
+        path = target_dir / name
+        if path.is_file() and not path.is_symlink():
+            content = path.read_text(encoding="utf-8")
+            break
+
+    kept = [name for name in tracked if name in wanted]
+    for name in tracked:
+        if name not in wanted:
+            path = target_dir / name
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+
+    if content is not None:
+        for name in wanted:
+            dest = target_dir / name
+            if dest.exists() and name not in tracked:
+                continue
+            dest.write_text(content, encoding="utf-8")
+            if name not in kept:
+                kept.append(name)
+
+    if kept:
+        marker.write_text(" ".join(sorted(set(kept))) + "\n")
+    else:
+        marker.unlink(missing_ok=True)
 
 
 def remove_context_file(target_dir: Path) -> list[str]:

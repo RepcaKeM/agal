@@ -10,7 +10,7 @@ import yaml
 
 from agal.config import LOCAL_STATE_FILE
 from agal.presets import install_preset, uninstall_preset
-from agal.skills import install_skill, load_local_state
+from agal.skills import install_skill, load_local_state, save_local_state
 from agal.subagents import (
     ADAPTER_PATHS,
     install_subagent,
@@ -80,6 +80,13 @@ class TestSubagentParsing(unittest.TestCase):
     def test_missing_raises_file_not_found(self):
         with self.assertRaises(FileNotFoundError):
             load_subagent("nope", self.cfg)
+
+    def test_invalid_name_rejected(self):
+        with self.assertRaises(ValueError):
+            load_subagent("../evil", self.cfg)
+        with self.assertRaises(ValueError):
+            save_subagent_template("has space", self.cfg)
+        self.assertFalse((self.sub_dir / "has space").exists())
 
     def test_malformed_raises_value_error(self):  # Review Focus 1
         cases = {
@@ -160,10 +167,20 @@ class TestAdapters(unittest.TestCase):
         self.assertNotIn("model", _split(r[".opencode/agents/rev.md"])[0])
 
     def test_cursor(self):
-        fm, _ = _split(self.rendered[".cursor/agents/rev.md"])
-        self.assertTrue(fm["readonly"])
+        fm, body = _split(self.rendered[".cursor/agents/rev.md"])
+        self.assertNotIn("readonly", fm)
+        self.assertIn("Do not create or edit files", body)
+        self.assertIn("You review.", body)
         full = render_adapters({**AGENT, "permissions": {"edit_files": True, "run_commands": True}})
-        self.assertNotIn("readonly", _split(full[".cursor/agents/rev.md"])[0])
+        full_fm, full_body = _split(full[".cursor/agents/rev.md"])
+        self.assertNotIn("readonly", full_fm)
+        self.assertNotIn("Do not", full_body)
+        locked = render_adapters({**AGENT, "permissions": {"edit_files": False, "run_commands": False}})
+        self.assertTrue(_split(locked[".cursor/agents/rev.md"])[0]["readonly"])
+        edit_only = render_adapters({**AGENT, "permissions": {"edit_files": True, "run_commands": False}})
+        edit_fm, edit_body = _split(edit_only[".cursor/agents/rev.md"])
+        self.assertNotIn("readonly", edit_fm)
+        self.assertIn("Do not run shell commands", edit_body)
 
     def test_opencode(self):
         fm, _ = _split(self.rendered[".opencode/agents/rev.md"])
@@ -177,7 +194,22 @@ class TestAdapters(unittest.TestCase):
         self.assertIs(fm["mainAgent"], False)
         self.assertEqual(fm["skills"], ["skills/s1"])
         self.assertIn("run_command", fm["tools"])
+        self.assertIn("list_dir", fm["tools"])
+        self.assertIn("find_by_name", fm["tools"])
         self.assertNotIn("replace_file_content", fm["tools"])
+        self.assertNotIn("write_to_file", fm["tools"])
+
+    def test_antigravity_can_create_files_without_commands(self):
+        rendered = render_adapters({**AGENT, "permissions": {"edit_files": True, "run_commands": False}})
+        fm, _ = _split(rendered[".agents/agents/rev/agent.md"])
+        self.assertIn("write_to_file", fm["tools"])
+        self.assertIn("replace_file_content", fm["tools"])
+        self.assertIn("list_dir", fm["tools"])
+        self.assertNotIn("run_command", fm["tools"])
+
+    def test_render_filters_runtimes(self):
+        rendered = render_adapters(AGENT, runtimes=["cursor"])
+        self.assertEqual(list(rendered), [".cursor/agents/rev.md"])
 
     def test_materialize_then_unmaterialize_leaves_nothing(self):
         files = materialize_adapters(AGENT, self.target)
@@ -259,6 +291,22 @@ class TestLifecycle(unittest.TestCase):
 
     def _has_skill(self, s):
         return (self.target / ".claude" / "skills" / s).exists()
+
+    def test_cursor_runtime_limits_skills_mcp_and_adapters(self):
+        save_local_state(self.target, {
+            "skills": {}, "mcp": {}, "hooks": {}, "preset": None, "runtimes": ["cursor"],
+        })
+        self._install("alpha")
+        self.assertTrue((self.target / ".cursor" / "agents" / "alpha.md").is_file())
+        self.assertFalse((self.target / ".claude").exists())
+        self.assertFalse((self.target / ".opencode").exists())
+        self.assertFalse((self.target / ".mcp.json").exists())
+        cursor_mcp = self.target / ".cursor" / "mcp.json"
+        self.assertIn("m1", json.loads(cursor_mcp.read_text(encoding="utf-8"))["mcpServers"])
+        skill = self.target / ".agents" / "skills" / "s1"
+        self.assertTrue(skill.is_dir())
+        self.assertFalse(skill.is_symlink())
+        self.assertTrue((skill / "SKILL.md").is_file())
 
     def test_install_records_state_and_deps(self):
         res = self._install("alpha")

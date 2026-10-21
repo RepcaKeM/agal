@@ -41,17 +41,20 @@ class TestSkills(unittest.TestCase):
         self.td.cleanup()
 
     @patch("agal.skills.get_all_skills")
-    def test_install_skill_local_symlink(self, mock_get_skills):
+    def test_install_skill_local_copies_files(self, mock_get_skills):
         mock_get_skills.return_value = self.mock_skills
 
         res = install_skill("my-skill", target_dir=self.target_dir, scope="local", copy=False)
         self.assertEqual(res["skill"], "my-skill")
+        self.assertEqual(res["mode"], "copy")
 
         agents_skill = self.target_dir / ".agents" / "skills" / "my-skill"
         claude_skill = self.target_dir / ".claude" / "skills" / "my-skill"
 
-        self.assertTrue(agents_skill.is_symlink())
-        self.assertTrue(claude_skill.is_symlink())
+        self.assertTrue(agents_skill.is_dir())
+        self.assertFalse(agents_skill.is_symlink())
+        self.assertTrue(claude_skill.is_dir())
+        self.assertFalse(claude_skill.is_symlink())
 
         # Check auxiliary files preserved
         self.assertTrue((agents_skill / "script.sh").is_file())

@@ -9,13 +9,15 @@ import yaml
 from agal import __version__, ui
 from agal.config import (
     AGAL_CONTEXT_MARKER,
+    SUPPORTED_RUNTIMES,
     get_config_path,
     get_presets_dir,
     get_sources_dir,
     load_config,
 )
+from agal.context import sync_context_files
 from agal.hooks import install_hook, uninstall_hook
-from agal.mcp import install_mcp, uninstall_mcp
+from agal.mcp import install_mcp, sync_installed_mcp, uninstall_mcp
 from agal.presets import (
     create_preset_interactive,
     delete_preset,
@@ -29,7 +31,10 @@ from agal.presets import (
 from agal.skills import (
     install_skill,
     load_global_state,
+    get_active_runtimes,
     load_local_state,
+    save_local_state,
+    sync_installed_skills,
     uninstall_skill,
 )
 from agal.sources import (
@@ -48,8 +53,10 @@ from agal.sources import (
 from agal.subagents import (
     install_subagent,
     list_subagents,
+    load_subagent,
     remove_subagent,
     save_subagent_template,
+    sync_installed_subagents,
     unprepare_all_subagents,
 )
 from agal.updater import (
@@ -199,17 +206,30 @@ def cmd_source(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
             print(f"⚠️  Failed to install tools from {src_path}.")
 
 
-def cmd_add(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
+def cmd_add(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    subparser: argparse.ArgumentParser | None = None,
+) -> None:
     item_type = args.item_type
     name = args.name
     scope = "global" if args.global_scope else "local"
     copy = getattr(args, "copy", False)
 
+    if not name:
+        if item_type == "skill" and sys.stdin.isatty():
+            _install_skills_interactive(cfg, scope=scope)
+            return
+        if subparser:
+            subparser.print_help()
+        return
+
     try:
         if item_type == "skill":
             res = install_skill(name, scope=scope, copy=copy, cfg=cfg)
-            mode_str = "copied" if copy else "symlinked"
-            print(f"✅ Installed skill '{name}' ({mode_str}, scope: {scope}) from source '{res['source']}'")
+            if scope == "local":
+                _unmark_preset_owned_skill(Path.cwd(), name)
+            print(f"✅ Installed skill '{name}' (copied, scope: {scope}) from source '{res['source']}'")
             _check_missing_tools_notice(res["source"])
 
         elif item_type == "mcp":
@@ -458,16 +478,144 @@ def cmd_subagent(
             print(f"  · {aname:<32} {desc}")
         print()
 
+    elif action == "info":
+        try:
+            agent = load_subagent(args.name, cfg)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"❌ {exc}")
+            return
+        all_skills = get_all_skills(cfg)
+        all_mcp = get_all_mcp_servers(cfg)
+        perms = agent.get("permissions", {})
+        print(f"\n🤖 {ui.bold('Subagent:')} {ui.cyan(agent['name'])}")
+        print(f"   {ui.dim(agent.get('description', ''))}")
+        print(f"   model: {agent.get('model', 'inherit')}")
+        print(f"   edit_files: {perms.get('edit_files', True)}   run_commands: {perms.get('run_commands', True)}\n")
+        skills = agent.get("skills", [])
+        print(f"  📦 {ui.bold('Skills')} ({len(skills)}):")
+        if skills:
+            for skill_name in skills:
+                if skill_name in all_skills:
+                    src = all_skills[skill_name].get("source", "unknown")
+                    print(f"     {ui.ok_mark()} {ui.bold(skill_name):<32} {ui.dim(f'[{src}]')}")
+                else:
+                    print(f"     {ui.fail_mark()} {ui.bold(skill_name):<32} {ui.yellow('[missing source]')}")
+        else:
+            print(f"     {ui.dim('(none)')}")
+        mcp_list = agent.get("mcp", [])
+        print(f"\n  🔌 {ui.bold('MCP Servers')} ({len(mcp_list)}):")
+        if mcp_list:
+            for mcp_name in mcp_list:
+                if mcp_name in all_mcp or f"{mcp_name}-mcp" in all_mcp:
+                    print(f"     {ui.ok_mark()} {ui.bold(mcp_name)}")
+                else:
+                    print(f"     {ui.fail_mark()} {ui.bold(mcp_name):<32} {ui.yellow('[missing definition]')}")
+        else:
+            print(f"     {ui.dim('(none)')}")
+        print()
+
     elif action == "create":
         try:
             path = save_subagent_template(args.name, cfg=cfg)
             print(f"✅ Created subagent template: {path}")
-        except FileExistsError as e:
+        except (FileExistsError, ValueError) as e:
             print(f"❌ {e}")
 
     else:
-        if subparser:
+        if sys.stdin.isatty():
+            try:
+                _subagent_wizard(cfg)
+            except (EOFError, KeyboardInterrupt):
+                print()
+        elif subparser:
             subparser.print_help()
+
+
+def _subagent_wizard(cfg: dict[str, Any]) -> None:
+    """Pick a project runtime, then the subagents to install."""
+    target = Path.cwd()
+    print(f"\n{ui.bold('Subagents')}")
+    print(ui.dim("Step 1 of 2 — choose the IDE/CLI for this project. Enter skips this step."))
+    runtimes = _select_items_cli(list(SUPPORTED_RUNTIMES), "Select IDE/CLI")
+    if runtimes:
+        _apply_runtimes(target, runtimes, cfg)
+        print(f"✅ Project runtimes: {', '.join(runtimes)}")
+    else:
+        _print_runtimes(target)
+
+    available = list_subagents(cfg)
+    if not available:
+        print("No subagents available.")
+        return
+    print(ui.dim("Step 2 of 2 — choose subagents to install. Enter skips this step."))
+    items = sorted(available)
+    labels = [f"{name:<24}  {available[name].get('description', '')}" for name in items]
+    names = _select_items_cli(items, "Select subagent(s) to add", display_labels=labels)
+    if not names:
+        return
+    current_subs = list(load_local_state(target).get("subagents", {}).keys())
+    for old_name in current_subs:
+        if old_name not in names:
+            res = remove_subagent(old_name, target_dir=target, cfg=cfg)
+            if res.get("removed"):
+                print(f"✅ Removed subagent '{old_name}'")
+    for name in names:
+        try:
+            install_subagent(name, target_dir=target, cfg=cfg)
+            print(f"✅ Installed subagent '{name}'")
+        except Exception as exc:
+            print(f"❌ {exc}")
+
+
+def _print_runtimes(target: Path) -> None:
+    selected = load_local_state(target).get("runtimes")
+    if selected:
+        print(f"Project runtimes: {', '.join(selected)}")
+    else:
+        print(f"Project runtimes: all ({', '.join(get_active_runtimes(target))})")
+
+
+def _apply_runtimes(target: Path, names: list[str] | None, cfg: dict[str, Any]) -> None:
+    state = load_local_state(target)
+    if names is None:
+        state.pop("runtimes", None)
+    else:
+        state["runtimes"] = names
+    save_local_state(target, state)
+    sync_installed_skills(target, cfg)
+    sync_installed_mcp(target)
+    sync_context_files(target)
+    sync_installed_subagents(target, cfg)
+
+
+def cmd_runtime(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
+    action = getattr(args, "runtime_action", None)
+    target = Path.cwd()
+    if action == "set":
+        names = list(args.names)
+        unknown = [name for name in names if name not in SUPPORTED_RUNTIMES]
+        if unknown:
+            allowed = ", ".join(SUPPORTED_RUNTIMES)
+            print(f"❌ Unknown runtime(s): {', '.join(unknown)}. Choose from: {allowed}")
+            return
+        selected: list[str] = []
+        for name in names:
+            if name not in selected:
+                selected.append(name)
+        _apply_runtimes(target, selected, cfg)
+        print(f"✅ Project runtimes: {', '.join(selected)}")
+    elif action == "reset":
+        _apply_runtimes(target, None, cfg)
+        print(f"✅ Runtimes reset (all: {', '.join(SUPPORTED_RUNTIMES)}).")
+    elif action == "list" or not sys.stdin.isatty():
+        _print_runtimes(target)
+    else:
+        selected = _select_items_cli(list(SUPPORTED_RUNTIMES), "Select IDE/CLI for this project")
+        if not selected:
+            _print_runtimes(target)
+            return
+        _apply_runtimes(target, selected, cfg)
+        print(f"✅ Project runtimes: {', '.join(selected)}")
 
 
 def cmd_check(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
@@ -523,6 +671,20 @@ def cmd_check(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         print("  MCP Servers:")
         for m in sorted(local_mcp.keys()):
             print(f"    · {m}")
+
+    subagents = list_subagents(cfg)
+    print(f"\n🤖 Subagents Validation ({len(subagents)} valid):")
+    if subagents:
+        for name in sorted(subagents):
+            print(f"  ✅ {name}")
+    else:
+        print("  (none)")
+
+    installed_subs = state.get("subagents", {})
+    if installed_subs:
+        print("  Installed in this project:")
+        for name in sorted(installed_subs):
+            print(f"    · {name}")
     print()
 
 
@@ -532,9 +694,12 @@ def cmd_status(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     global_state = load_global_state()
     preset = local_state.get("preset")
 
+    runtimes = local_state.get("runtimes")
+    runtime_label = ", ".join(runtimes) if runtimes else "all"
     rows = [
         ("Project Path:", str(cwd)),
         ("Active Preset:", ui.green(f"● {preset}") if preset else ui.dim("none")),
+        ("Active Runtimes:", ui.green(runtime_label) if runtimes else ui.dim(runtime_label)),
     ]
     print("\n" + ui.card(f"AGAL  ›  Agent Agnostic Launch v{__version__}", rows))
 
@@ -560,6 +725,14 @@ def cmd_status(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
             print(f"     {ui.ok_mark()} {ui.bold(mname):<28} {ui.dim(f'(command: {cmd_short})')}")
     else:
         print(f"     {ui.dim('(none — run: agal add mcp <name>)')}")
+
+    subs = local_state.get("subagents", {})
+    print(f"\n  🤖 {ui.bold('Project Subagents')} ({len(subs)}):")
+    if subs:
+        for name in sorted(subs):
+            print(f"     {ui.ok_mark()} {ui.bold(name)}")
+    else:
+        print(f"     {ui.dim('(none — run: agal subagent add <name>)')}")
 
     marker = cwd / AGAL_CONTEXT_MARKER
     print(f"\n  🧠 {ui.bold('Coding Guidelines')}:")
@@ -591,7 +764,7 @@ def cmd_prepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         print(f"❌ {e}")
         return
     print(f"\n✅ Prepared preset '{args.preset}':")
-    print(f"   · Skills: {len(res['skills'])} linked")
+    print(f"   · Skills: {len(res['skills'])} copied")
     print(f"   · MCP:    {len(res['mcp'])} configured")
     if res.get("guidelines"):
         print(f"   · Guidelines: {', '.join(res['guidelines'])}")
@@ -602,6 +775,94 @@ def cmd_unprepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     unprepare_all_subagents(cfg=cfg)
     res = uninstall_preset(scope="local", cfg=cfg)
     print(f"✅ Unprepared: removed {len(res['removed_skills'])} skills, {len(res['removed_mcp'])} MCP servers.")
+
+
+def _unmark_preset_owned_skill(target_dir: Path, skill_name: str) -> None:
+    state = load_local_state(target_dir)
+    owned = state.get("preset_owned")
+    if not isinstance(owned, dict):
+        return
+    skills = list(owned.get("skills", []))
+    if skill_name not in skills:
+        return
+    owned["skills"] = [name for name in skills if name != skill_name]
+    state["preset_owned"] = owned
+    save_local_state(target_dir, state)
+
+
+def _install_skills_interactive(cfg: dict[str, Any], scope: str = "local") -> None:
+    skills_dict = get_all_skills(cfg)
+    if not skills_dict:
+        print("No skills available.")
+        return
+    names = sorted(skills_dict.keys())
+    labels = []
+    for sname in names:
+        sinfo = skills_dict[sname]
+        src = sinfo.get("source", "unknown")
+        clean_desc = " ".join(str(sinfo.get("description", "")).split())
+        desc_short = (clean_desc[:55] + "...") if len(clean_desc) > 55 else clean_desc
+        label = f"{sname:<32} [{src}]"
+        if desc_short:
+            label = f"{label:<48} {desc_short}"
+        labels.append(label)
+    selected = _select_items_cli(names, "Select skill(s) to copy", display_labels=labels)
+    if not selected:
+        return
+    for sname in selected:
+        try:
+            res = install_skill(sname, scope=scope, cfg=cfg, all_skills=skills_dict)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"❌ {exc}")
+            continue
+        if scope == "local":
+            _unmark_preset_owned_skill(Path.cwd(), sname)
+        print(f"✅ Installed skill '{sname}' (copied, scope: {scope}) from source '{res['source']}'")
+        _check_missing_tools_notice(res["source"])
+
+
+def _select_and_prepare_preset(cfg: dict[str, Any]) -> None:
+    presets = list_presets(cfg)
+    if not presets:
+        print(f"\n{ui.warn_mark()} No presets found. Create one with: agal preset create <name>")
+        return
+    preset_names = [p["name"] for p in presets]
+    display_labels = [f"{p['name']:<24} {ui.dim(p.get('description', ''))}" for p in presets]
+    selected = _select_items_cli(preset_names, "Select preset to prepare", display_labels)
+    if selected:
+        cmd_prepare_alias(argparse.Namespace(preset=selected[0], remote=False, copy=False), cfg)
+
+
+def _skill_wizard(cfg: dict[str, Any]) -> None:
+    mode = _select_items_cli(
+        ["skills", "preset"],
+        "Select action",
+        display_labels=[
+            "Copy selected skills to this project",
+            "Select a preset for this project",
+        ],
+    )
+    if not mode:
+        return
+    if mode[0] == "skills":
+        _install_skills_interactive(cfg, scope="local")
+    elif mode[0] == "preset":
+        _select_and_prepare_preset(cfg)
+
+
+def cmd_skill(
+    args: argparse.Namespace,
+    cfg: dict[str, Any],
+    subparser: argparse.ArgumentParser | None = None,
+) -> None:
+    del args
+    if sys.stdin.isatty():
+        try:
+            _skill_wizard(cfg)
+        except (EOFError, KeyboardInterrupt):
+            print()
+    elif subparser:
+        subparser.print_help()
 
 
 def interactive_launcher(cfg: dict[str, Any], parser: argparse.ArgumentParser) -> None:
@@ -624,24 +885,19 @@ def interactive_launcher(cfg: dict[str, Any], parser: argparse.ArgumentParser) -
     print(f"  {ui.cyan('[5]')} 🌐 Manage connected Git sources        {ui.dim('(agal source list)')}")
     print(f"  {ui.cyan('[6]')} 📊 View full project status            {ui.dim('(agal status)')}")
     print(f"  {ui.cyan('[7]')} ❓ Show full CLI help                  {ui.dim('(--help)')}")
+    print(f"  {ui.cyan('[8]')} 🤖 Choose runtime and subagents     {ui.dim('(agal subagent)')}")
+    print(f"  {ui.cyan('[9]')} 🎯 Choose IDE/CLI for this project    {ui.dim('(agal runtime)')}")
+    print(f"  {ui.cyan('[10]')} 📦 Copy skills or choose a preset    {ui.dim('(agal skill)')}")
     print(f"  {ui.dim('[0] Exit')}\n")
 
     try:
-        choice = input(ui.bold("Select [1-7] > ")).strip()
+        choice = input(ui.bold("Select [1-10] > ")).strip()
     except (EOFError, KeyboardInterrupt):
         print()
         return
 
     if choice == "1":
-        presets = list_presets(cfg)
-        if not presets:
-            print(f"\n{ui.warn_mark()} No presets found. Create one with: agal preset create <name>")
-            return
-        preset_names = [p["name"] for p in presets]
-        display_labels = [f"{p['name']:<24} {ui.dim(p.get('description', ''))}" for p in presets]
-        selected = _select_items_cli(preset_names, "Select preset to prepare", display_labels)
-        if selected:
-            cmd_prepare_alias(argparse.Namespace(preset=selected[0], remote=False, copy=False), cfg)
+        _select_and_prepare_preset(cfg)
     elif choice == "2":
         cmd_unprepare_alias(argparse.Namespace(), cfg)
     elif choice == "3":
@@ -659,6 +915,20 @@ def interactive_launcher(cfg: dict[str, Any], parser: argparse.ArgumentParser) -
         cmd_status(argparse.Namespace(), cfg)
     elif choice == "7":
         parser.print_help()
+    elif choice == "8":
+        try:
+            _subagent_wizard(cfg)
+        except (EOFError, KeyboardInterrupt):
+            print()
+    elif choice == "9":
+        selected = _select_items_cli(list(SUPPORTED_RUNTIMES), "Select IDE/CLI for this project")
+        if selected:
+            cmd_runtime(argparse.Namespace(runtime_action="set", names=selected), cfg)
+    elif choice == "10":
+        try:
+            _skill_wizard(cfg)
+        except (EOFError, KeyboardInterrupt):
+            print()
     else:
         return
 
@@ -682,7 +952,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", action="store_true", help="Print config file path")
     parser.add_argument("--edit", "-e", metavar="PRESET", help="Edit preset in $EDITOR")
     parser.add_argument("--prepare", metavar="PRESET", help="Prepare a preset in current project")
-    parser.add_argument("--remote", "-r", action="store_true", help="Copy files instead of symlinking")
+    parser.add_argument("--remote", "-r", action="store_true", help="Accepted for compatibility; files are always copied")
     parser.add_argument("--unprepare", action="store_true", help="Remove prepared preset from current project")
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Subcommand")
@@ -712,15 +982,17 @@ def main(argv: list[str] | None = None) -> None:
     # add
     p_add = subparsers.add_parser("add", help="Install a skill, MCP, hook, or preset")
     p_add.add_argument("item_type", choices=["skill", "mcp", "hook", "preset"])
-    p_add.add_argument("name", help="Name of item to install")
+    p_add.add_argument("name", nargs="?", help="Name of item to install")
     p_add.add_argument("--global", "-g", dest="global_scope", action="store_true", help="Install globally for user")
-    p_add.add_argument("--copy", "-c", action="store_true", help="Copy instead of symlink")
+    p_add.add_argument("--copy", "-c", action="store_true", help="Accepted for compatibility; files are always copied")
 
     # remove
     p_rem = subparsers.add_parser("remove", help="Uninstall a skill, MCP, hook, or preset")
     p_rem.add_argument("item_type", choices=["skill", "mcp", "hook", "preset"])
     p_rem.add_argument("name", help="Name of item to uninstall")
     p_rem.add_argument("--global", "-g", dest="global_scope", action="store_true", help="Uninstall from global scope")
+
+    p_skill = subparsers.add_parser("skill", help="Interactively copy skills or select a preset")
 
     # list
     p_list = subparsers.add_parser("list", help="List skills, MCP servers, or presets")
@@ -751,8 +1023,23 @@ def main(argv: list[str] | None = None) -> None:
 
     p_subagent_sub.add_parser("list", help="List available subagents")
 
+    p_sub_info = p_subagent_sub.add_parser("info", help="Show subagent details and dependencies")
+    p_sub_info.add_argument("name", help="Subagent name")
+
     p_sub_create = p_subagent_sub.add_parser("create", help="Create new subagent template")
     p_sub_create.add_argument("name", help="Subagent name")
+
+    # runtime (aliases: target, ide)
+    p_runtime = subparsers.add_parser(
+        "runtime",
+        aliases=["target", "ide"],
+        help="Choose which IDE/CLI this project prepares",
+    )
+    p_runtime_sub = p_runtime.add_subparsers(dest="runtime_action")
+    p_runtime_set = p_runtime_sub.add_parser("set", help="Limit this project to the named IDE/CLI")
+    p_runtime_set.add_argument("names", nargs="+", help="claude, cursor, opencode, agy")
+    p_runtime_sub.add_parser("list", help="Show the IDE/CLI selected for this project")
+    p_runtime_sub.add_parser("reset", help="Prepare files for every supported IDE/CLI")
 
     # update
     p_upd = subparsers.add_parser("update", help="Update git sources")
@@ -761,7 +1048,7 @@ def main(argv: list[str] | None = None) -> None:
     # prepare (subcommand alias)
     p_prep = subparsers.add_parser("prepare", help="Prepare a preset in current project")
     p_prep.add_argument("preset", help="Preset name")
-    p_prep.add_argument("--remote", "-r", action="store_true", help="Copy files instead of symlinking")
+    p_prep.add_argument("--remote", "-r", action="store_true", help="Accepted for compatibility; files are always copied")
 
     # unprepare (subcommand alias)
     subparsers.add_parser("unprepare", help="Remove prepared preset from current project")
@@ -774,8 +1061,9 @@ def main(argv: list[str] | None = None) -> None:
 
     # Pre-parse shortcut: if argv[0] is a known preset name and not a flag or subcommand
     known_commands = {
-        "source", "add", "remove", "list", "preset", "update", "check", "status",
-        "prepare", "unprepare", "subagent", "-h", "--help", "-v", "--version", "--status",
+        "source", "add", "remove", "list", "skill", "preset", "update", "check", "status",
+        "prepare", "unprepare", "subagent", "runtime", "target", "ide",
+        "-h", "--help", "-v", "--version", "--status",
         "--list", "--check", "--config", "--edit", "-e", "--prepare", "--unprepare",
     }
     if argv and argv[0] not in known_commands and not argv[0].startswith("-"):
@@ -816,7 +1104,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.subcommand == "source":
         cmd_source(args, cfg)
     elif args.subcommand == "add":
-        cmd_add(args, cfg)
+        cmd_add(args, cfg, p_add)
+    elif args.subcommand == "skill":
+        cmd_skill(args, cfg, p_skill)
     elif args.subcommand == "remove":
         cmd_remove(args, cfg)
     elif args.subcommand == "list":
@@ -825,6 +1115,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_preset(args, cfg)
     elif args.subcommand == "subagent":
         cmd_subagent(args, cfg, p_subagent)
+    elif args.subcommand in ("runtime", "target", "ide"):
+        cmd_runtime(args, cfg)
     elif args.subcommand == "prepare":
         cmd_prepare_alias(args, cfg)
     elif args.subcommand == "unprepare":

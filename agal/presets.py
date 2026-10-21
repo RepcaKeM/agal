@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from agal.config import (
+    context_filenames_for_runtimes,
     get_presets_dir,
     load_config,
 )
@@ -25,6 +26,7 @@ from agal.skills import (
     uninstall_skill,
 )
 from agal.sources import (
+    get_all_hooks,
     get_all_mcp_servers,
     get_all_skills,
 )
@@ -297,21 +299,103 @@ def create_preset_interactive(name: str, cfg: dict[str, Any] | None = None) -> P
     return path
 
 
+def _mcp_matches(name: str, pool: set[str]) -> bool:
+    return name in pool or f"{name}-mcp" in pool or name.removesuffix("-mcp") in pool
+
+
+def _claim_for_subagent(target: Path, kind: str, item_name: str) -> None:
+    fresh = load_local_state(target)
+    owned = fresh.setdefault("subagent_owned", {})
+    owned.setdefault("skills", [])
+    owned.setdefault("mcp", [])
+    items = list(owned.get(kind, []))
+    if item_name not in items:
+        items.append(item_name)
+    owned[kind] = sorted(items)
+    save_local_state(target, fresh)
+
+
 def install_preset(
     name: str,
     target_dir: Path | None = None,
     scope: str = "local",
-    copy: bool = False,
+    copy: bool = True,
     cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Installs an entire preset (skills + MCP + hooks + context guidelines).
+
+    Skills and guideline files are always copied. ``copy`` is accepted so
+    existing callers keep working.
     """
+    del copy
     if cfg is None:
         cfg = load_config()
 
     preset = resolve_preset(name, cfg)
     target = (target_dir or Path.cwd()).resolve()
+
+    manual_skills: set[str] = set()
+    manual_mcp: set[str] = set()
+    manual_hooks: set[str] = set()
+    if scope == "local":
+        state = load_local_state(target)
+        if "preset_owned" in state:
+            owned_prev = state.get("preset_owned") or {}
+            prev_skills = set(owned_prev.get("skills", []))
+            prev_mcp = set(owned_prev.get("mcp", []))
+            prev_hooks = set(owned_prev.get("hooks", []))
+        elif state.get("preset"):
+            try:
+                old_preset = resolve_preset(state["preset"], cfg)
+                prev_skills = set(old_preset.get("skills", []))
+                prev_mcp = set(old_preset.get("mcp", []))
+                prev_hooks = set(old_preset.get("hooks", []))
+            except Exception:
+                prev_skills = set(state.get("skills", {}))
+                prev_mcp = set(state.get("mcp", {}))
+                prev_hooks = set(state.get("hooks", {}))
+            sub_owned = state.get("subagent_owned", {})
+            prev_skills -= set(sub_owned.get("skills", []))
+            owned_mcp = set(sub_owned.get("mcp", []))
+            prev_mcp = {item for item in prev_mcp if not _mcp_matches(item, owned_mcp)}
+            prev_hooks -= set(sub_owned.get("hooks", []))
+        else:
+            prev_skills, prev_mcp, prev_hooks = set(), set(), set()
+
+        sub_skills: set[str] = set()
+        sub_mcp: set[str] = set()
+        for sub in state.get("subagents", {}).values():
+            sub_skills.update(sub.get("skills", []))
+            sub_mcp.update(sub.get("mcp", []))
+        if state.get("subagents"):
+            sub_owned = state.get("subagent_owned", {})
+            sub_skills.update(sub_owned.get("skills", []))
+            sub_mcp.update(sub_owned.get("mcp", []))
+
+        manual_skills = set(state.get("skills", {})) - prev_skills - sub_skills
+        manual_mcp = {
+            item for item in state.get("mcp", {})
+            if not _mcp_matches(item, prev_mcp) and not _mcp_matches(item, sub_mcp)
+        }
+        manual_hooks = set(state.get("hooks", {})) - prev_hooks
+
+        new_skills = set(preset.get("skills", []))
+        new_mcp = set(preset.get("mcp", []))
+        new_hooks = set(preset.get("hooks", []))
+        for sname in sorted(prev_skills):
+            if sname in sub_skills and sname not in new_skills:
+                _claim_for_subagent(target, "skills", sname)
+            elif sname not in new_skills:
+                uninstall_skill(sname, target_dir=target, scope="local")
+        for mname in sorted(prev_mcp):
+            if _mcp_matches(mname, sub_mcp) and not _mcp_matches(mname, new_mcp):
+                _claim_for_subagent(target, "mcp", mname)
+            elif not _mcp_matches(mname, new_mcp):
+                uninstall_mcp(mname, target_dir=target, scope="local")
+        for hname in sorted(prev_hooks):
+            if hname not in new_hooks:
+                uninstall_hook(hname, target_dir=target, scope="local")
 
     installed_skills = []
     installed_mcp = []
@@ -324,7 +408,9 @@ def install_preset(
         if sname in all_skills:
             skill_paths[sname] = Path(all_skills[sname]["path"])
             try:
-                res = install_skill(sname, target_dir=target, scope=scope, copy=copy, cfg=cfg)
+                res = install_skill(
+                    sname, target_dir=target, scope=scope, cfg=cfg, all_skills=all_skills
+                )
                 installed_skills.append(res)
             except Exception as e:
                 print(f"⚠️  Failed to install skill '{sname}': {e}")
@@ -332,24 +418,31 @@ def install_preset(
             print(f"⚠️  Skill '{sname}' not found in any registered source (skipped).")
 
     # 2. Install MCP
-    all_mcp = get_all_mcp_servers(cfg)
-    for mname in preset.get("mcp", []):
-        if mname in all_mcp:
-            try:
-                res = install_mcp(mname, target_dir=target, scope=scope, cfg=cfg)
-                installed_mcp.append(res)
-            except Exception as e:
-                print(f"⚠️  Failed to install MCP '{mname}': {e}")
-        else:
-            print(f"⚠️  MCP server '{mname}' not found in any registered source (skipped).")
+    if preset.get("mcp"):
+        all_mcp = get_all_mcp_servers(cfg)
+        for mname in preset.get("mcp", []):
+            if mname in all_mcp:
+                try:
+                    res = install_mcp(
+                        mname, target_dir=target, scope=scope, cfg=cfg, all_servers=all_mcp
+                    )
+                    installed_mcp.append(res)
+                except Exception as e:
+                    print(f"⚠️  Failed to install MCP '{mname}': {e}")
+            else:
+                print(f"⚠️  MCP server '{mname}' not found in any registered source (skipped).")
 
     # 3. Install Hooks
-    for hname in preset.get("hooks", []):
-        try:
-            res = install_hook(hname, target_dir=target, scope=scope, cfg=cfg)
-            installed_hooks.append(res)
-        except Exception as e:
-            print(f"⚠️  Failed to install hook '{hname}': {e}")
+    if preset.get("hooks"):
+        hooks = get_all_hooks(cfg)
+        for hname in preset.get("hooks", []):
+            try:
+                res = install_hook(
+                    hname, target_dir=target, scope=scope, cfg=cfg, all_hooks=hooks
+                )
+                installed_hooks.append(res)
+            except Exception as e:
+                print(f"⚠️  Failed to install hook '{hname}': {e}")
 
     # 4. Context & Routing CSV (if local and context_file configured or default AGENTS.md exists)
     placed_guidelines: list[str] = []
@@ -368,16 +461,35 @@ def install_preset(
 
         if ctx_file and Path(ctx_file).is_file():
             routing_block, _ = build_routing_block(preset.get("skills", []), skill_paths)
+            runtimes = load_local_state(target).get("runtimes") or None
             placed_guidelines = place_context_file(
                 target_dir=target,
                 context_path=Path(ctx_file),
-                copy=copy,
                 routing_block=routing_block,
+                filenames=context_filenames_for_runtimes(runtimes),
             )
+        else:
+            remove_context_file(target)
 
-        # Update preset marker in local state
         state = load_local_state(target)
         state["preset"] = name
+        owned_now = state.get("subagent_owned", {})
+        owned_skills_now = set(owned_now.get("skills", []))
+        owned_mcp_now = set(owned_now.get("mcp", []))
+        state["preset_owned"] = {
+            "skills": sorted(
+                item["skill"] for item in installed_skills
+                if item["skill"] not in manual_skills and item["skill"] not in owned_skills_now
+            ),
+            "mcp": sorted(
+                item["mcp"] for item in installed_mcp
+                if item["mcp"] not in manual_mcp and not _mcp_matches(item["mcp"], owned_mcp_now)
+            ),
+            "hooks": sorted(
+                item["hook"] for item in installed_hooks
+                if item["hook"] not in manual_hooks
+            ),
+        }
         save_local_state(target, state)
 
     return {
@@ -418,8 +530,11 @@ def uninstall_preset(
 
         removed_context = remove_context_file(target)
 
-        # Clear state
-        save_local_state(target, {"skills": {}, "mcp": {}, "hooks": {}, "preset": None})
+        runtimes = state.get("runtimes")
+        cleared: dict[str, Any] = {"skills": {}, "mcp": {}, "hooks": {}, "preset": None}
+        if runtimes:
+            cleared["runtimes"] = runtimes
+        save_local_state(target, cleared)
 
         return {
             "scope": "local",

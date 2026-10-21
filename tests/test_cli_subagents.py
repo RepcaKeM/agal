@@ -1,5 +1,6 @@
 from pathlib import Path
 import io
+import json
 import os
 import sys
 import tempfile
@@ -110,8 +111,31 @@ class TestCLISubagents(unittest.TestCase):
         self.assertTrue((self.sub_dir / "fresh" / "AGENT.md").is_file())
         self.assertIn("❌", self._run(["subagent", "create", "fresh"]))
 
-    def test_bare_subagent_prints_help(self):
-        self.assertIn("add", self._run(["subagent"]))
+    def test_bare_subagent_prints_help_when_not_a_tty(self):
+        with patch("sys.stdin.isatty", return_value=False):
+            self.assertIn("add", self._run(["subagent"]))
+
+    def test_bare_subagent_wizard_sets_runtime_then_installs(self):
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=[["cursor"], ["beta"]]),
+        ):
+            out = self._run(["subagent"])
+        self.assertIn("cursor", out)
+        self.assertIn("beta", out)
+        self.assertTrue((self.proj_dir / ".cursor" / "agents" / "beta.md").is_file())
+        self.assertFalse((self.proj_dir / ".claude").exists())
+        self.assertTrue((self.proj_dir / ".agents" / "skills" / "s2").is_dir())
+
+    def test_bare_subagent_wizard_can_skip_runtime(self):
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=[[], ["solo"]]),
+        ):
+            out = self._run(["subagent"])
+        self.assertIn("Installed subagent 'solo'", out)
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "solo.md").is_file())
+        self.assertTrue((self.proj_dir / ".cursor" / "agents" / "solo.md").is_file())
 
     def test_preset_named_subagent_does_not_shadow_command(self):
         (self.presets_dir / "subagent.yaml").write_text("name: subagent\nskills: []\n", encoding="utf-8")
@@ -128,3 +152,93 @@ class TestCLISubagents(unittest.TestCase):
         self._run(["subagent", "add", "alpha"])
         self._run(["remove", "preset", "p"])
         self.assertEqual(_files(self.proj_dir), [])
+
+    def test_runtime_set_rebuilds_project_files(self):
+        self._run(["subagent", "add", "alpha"])
+        out = self._run(["runtime", "set", "cursor"])
+        self.assertIn("cursor", out)
+        self.assertTrue((self.proj_dir / ".cursor" / "agents" / "alpha.md").is_file())
+        self.assertFalse((self.proj_dir / ".claude").exists())
+        self.assertFalse((self.proj_dir / ".opencode").exists())
+        self.assertFalse((self.proj_dir / ".mcp.json").exists())
+        mcp = json.loads((self.proj_dir / ".cursor" / "mcp.json").read_text(encoding="utf-8"))
+        self.assertIn("m1", mcp["mcpServers"])
+        skill = self.proj_dir / ".agents" / "skills" / "s1"
+        self.assertTrue(skill.is_dir())
+        self.assertFalse(skill.is_symlink())
+
+    def test_runtime_reset_and_alias(self):
+        self._run(["ide", "set", "cursor"])
+        self._run(["subagent", "add", "solo"])
+        self.assertFalse((self.proj_dir / ".claude" / "agents" / "solo.md").exists())
+        self._run(["target", "reset"])
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "solo.md").is_file())
+        self.assertTrue((self.proj_dir / ".opencode" / "agents" / "solo.md").is_file())
+        self.assertTrue((self.proj_dir / ".agents" / "agents" / "solo" / "agent.md").is_file())
+        unknown = self._run(["runtime", "set", "nope"])
+        self.assertIn("Unknown runtime", unknown)
+
+    def test_prepare_respects_runtime_and_copies_guidelines(self):
+        cfg = yaml.safe_load((self.home_dir / "config.yaml").read_text(encoding="utf-8"))
+        Path(cfg["context_file"]).write_text("# guidelines\n", encoding="utf-8")
+        self._run(["runtime", "set", "agy"])
+        self._run(["prepare", "p"])
+        self.assertTrue((self.proj_dir / "AGENTS.md").is_file())
+        self.assertFalse((self.proj_dir / "AGENTS.md").is_symlink())
+        self.assertTrue((self.proj_dir / "GEMINI.md").is_file())
+        self.assertFalse((self.proj_dir / "CLAUDE.md").exists())
+        self.assertFalse((self.proj_dir / "KIMI.md").exists())
+        self.assertTrue((self.proj_dir / ".agents" / "skills" / "s1").is_dir())
+        self.assertFalse((self.proj_dir / ".claude").exists())
+
+    def test_subagent_info_status_and_invalid_name(self):
+        info = self._run(["subagent", "info", "alpha"])
+        self.assertIn("s1", info)
+        self.assertIn("m1", info)
+        created = self._run(["subagent", "create", "../evil"])
+        self.assertIn("❌", created)
+        self.assertFalse(any(path.name.startswith("..") for path in self.sub_dir.iterdir()))
+        self._run(["runtime", "set", "claude"])
+        self._run(["subagent", "add", "solo"])
+        status = self._run(["status"])
+        self.assertIn("solo", status)
+        self.assertIn("claude", status)
+        checked = self._run(["check"])
+        self.assertIn("alpha", checked)
+        self.assertIn("solo", checked)
+
+    def test_subagent_wizard_replaces_previous_subagents_and_keeps_preset(self):
+        self._run(["prepare", "p"])
+        self._run(["subagent", "add", "alpha"])
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "alpha.md").is_file())
+        self.assertTrue((self.proj_dir / ".claude" / "skills" / "s2").is_dir())
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=[[], ["solo"]]),
+        ):
+            out = self._run(["subagent"])
+
+        self.assertIn("Removed subagent 'alpha'", out)
+        self.assertIn("Installed subagent 'solo'", out)
+        self.assertFalse((self.proj_dir / ".claude" / "agents" / "alpha.md").exists())
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "solo.md").is_file())
+        self.assertFalse((self.proj_dir / ".claude" / "skills" / "s2").exists())
+        self.assertFalse((self.proj_dir / ".mcp.json").exists())
+        self.assertTrue((self.proj_dir / ".claude" / "skills" / "s1").is_dir())
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state.get("preset"), "p")
+        self.assertEqual(list(state.get("subagents", {}).keys()), ["solo"])
+
+    def test_subagent_wizard_empty_selection_keeps_installed_subagents(self):
+        self._run(["subagent", "add", "alpha"])
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=[["cursor"], []]),
+        ):
+            self._run(["subagent"])
+
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state.get("runtimes"), ["cursor"])
+        self.assertIn("alpha", state.get("subagents", {}))
+        self.assertTrue((self.proj_dir / ".cursor" / "agents" / "alpha.md").is_file())

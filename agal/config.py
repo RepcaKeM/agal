@@ -24,6 +24,62 @@ LOCAL_SKILL_DIRS = [
     ".claude/skills",
 ]
 
+SUPPORTED_RUNTIMES = ("claude", "cursor", "opencode", "agy")
+
+RUNTIME_CONTEXT_FILES = {
+    "claude": ("CLAUDE.md", "AGENTS.md"),
+    "cursor": ("AGENTS.md",),
+    "opencode": ("AGENTS.md",),
+    "agy": ("AGENTS.md", "GEMINI.md"),
+}
+
+
+def skill_rel_dirs_for_runtimes(runtimes: list[str] | None) -> list[str]:
+    """Skill directories for an explicit runtime list.
+
+    None keeps every local skill directory.
+    """
+    if not runtimes:
+        return list(LOCAL_SKILL_DIRS)
+    wanted: set[str] = set()
+    if "claude" in runtimes:
+        wanted.add(".claude/skills")
+    if any(name in runtimes for name in ("cursor", "opencode", "agy")):
+        wanted.add(".agents/skills")
+    selected = [d for d in LOCAL_SKILL_DIRS if d in wanted]
+    return selected or list(LOCAL_SKILL_DIRS)
+
+
+def context_filenames_for_runtimes(runtimes: list[str] | None) -> list[str]:
+    """Guideline filenames for an explicit runtime list.
+
+    None keeps every context filename, including KIMI.md.
+    """
+    if not runtimes:
+        return list(CONTEXT_FILENAMES)
+    files: list[str] = []
+    for runtime in runtimes:
+        for name in RUNTIME_CONTEXT_FILES.get(runtime, ()):
+            if name not in files:
+                files.append(name)
+    return files or list(CONTEXT_FILENAMES)
+
+
+def mcp_files_for_runtimes(runtimes: list[str] | None) -> list[str]:
+    """Project MCP config paths for an explicit runtime list.
+
+    None keeps Claude Code's .mcp.json only, so a project that never
+    picked a runtime does not grow a .cursor directory.
+    """
+    if not runtimes:
+        return [".mcp.json"]
+    files: list[str] = []
+    if "claude" in runtimes:
+        files.append(".mcp.json")
+    if "cursor" in runtimes:
+        files.append(".cursor/mcp.json")
+    return files
+
 GLOBAL_SKILL_DIRS = [
     Path.home() / ".agents" / "skills",
     Path.home() / ".claude" / "skills",

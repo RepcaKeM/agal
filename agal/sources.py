@@ -650,17 +650,16 @@ def get_all_skills(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any
     if cfg is None:
         cfg = load_config()
 
-    sources = list_sources(cfg)
     all_skills: dict[str, dict[str, Any]] = {}
 
-    for src in sources:
-        src_path = Path(src["path"])
+    for src_name, data in load_sources_registry().items():
+        src_path = Path(data.get("path", get_sources_dir(cfg) / src_name))
         if not src_path.is_dir():
             continue
         indexed = index_source_dir(src_path)
         for sname, sinfo in indexed["skills"].items():
             sentry = dict(sinfo)
-            sentry["source"] = src["name"]
+            sentry["source"] = src_name
             all_skills[sname] = sentry
 
     # Backward compatibility: if a custom skills_dir or bundled Skills/ exists
@@ -694,17 +693,16 @@ def get_all_mcp_servers(cfg: dict[str, Any] | None = None) -> dict[str, dict[str
     if cfg is None:
         cfg = load_config()
 
-    sources = list_sources(cfg)
     all_mcp: dict[str, dict[str, Any]] = {}
 
-    for src in sources:
-        src_path = Path(src["path"])
+    for src_name, data in load_sources_registry().items():
+        src_path = Path(data.get("path", get_sources_dir(cfg) / src_name))
         if not src_path.is_dir():
             continue
         indexed = index_source_dir(src_path)
         for sname, sinfo in indexed["mcp_servers"].items():
             entry = dict(sinfo)
-            entry["source"] = src["name"]
+            entry["source"] = src_name
             all_mcp[sname] = entry
 
     return all_mcp
@@ -715,17 +713,16 @@ def get_all_hooks(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any]
     if cfg is None:
         cfg = load_config()
 
-    sources = list_sources(cfg)
     all_hooks: dict[str, dict[str, Any]] = {}
 
-    for src in sources:
-        src_path = Path(src["path"])
+    for src_name, data in load_sources_registry().items():
+        src_path = Path(data.get("path", get_sources_dir(cfg) / src_name))
         if not src_path.is_dir():
             continue
         indexed = index_source_dir(src_path)
         for hinfo in indexed["hooks"]:
             entry = dict(hinfo)
-            entry["source"] = src["name"]
+            entry["source"] = src_name
             all_hooks[hinfo["name"]] = entry
 
     return all_hooks

@@ -236,6 +236,27 @@ class TestSources(unittest.TestCase):
             self.assertIn("playwright-mcp", indexed["mcp_servers"])
             self.assertEqual(indexed["mcp_servers"]["playwright-mcp"]["config"]["command"], "npx")
 
+    def test_get_all_skills_indexes_each_source_once(self):
+        from unittest.mock import patch
+        import agal.sources
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src_dir = root / "sources" / "s1"
+            (src_dir / "skills" / "sk1").mkdir(parents=True)
+            (src_dir / "skills" / "sk1" / "SKILL.md").write_text(
+                "---\nname: sk1\ndescription: d\n---\n", encoding="utf-8"
+            )
+            cfg = {"sources_dir": str(root / "sources"), "skills_dir": str(root / "no-bundled")}
+            registry = {"s1": {"path": str(src_dir)}}
+            with (
+                patch("agal.sources.load_sources_registry", return_value=registry),
+                patch("agal.sources.index_source_dir", wraps=agal.sources.index_source_dir) as spy_index,
+            ):
+                skills = agal.sources.get_all_skills(cfg)
+                self.assertIn("sk1", skills)
+                self.assertEqual(spy_index.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

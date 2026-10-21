@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import re
 import yaml
 
 from agal.config import LOCAL_STATE_FILE, get_subagents_dir
@@ -15,10 +16,34 @@ from agal.skills import (
 )
 
 VALID_MODELS = {"inherit", "sonnet", "opus", "haiku"}
-AGY_READ_TOOLS = ["view_file", "grep_search"]
+VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+AGY_READ_TOOLS = ["view_file", "grep_search", "list_dir", "find_by_name"]
+AGY_WRITE_TOOLS = ["replace_file_content", "write_to_file"]
+
+_ADAPTER_KEYS = {
+    "claude": ".claude/agents/{name}.md",
+    "cursor": ".cursor/agents/{name}.md",
+    "opencode": ".opencode/agents/{name}.md",
+    "agy": ".agents/agents/{name}/agent.md",
+}
+
+
+def _validate_name(name: str) -> None:
+    if not VALID_NAME_RE.fullmatch(name):
+        raise ValueError(
+            f"Invalid subagent name '{name}'. Use only letters, digits, '_' and '-'."
+        )
+
+
+def _permission_note(note: str, body: str) -> str:
+    body_clean = body.strip()
+    if body_clean:
+        return f"{note}\n\n{body_clean}"
+    return note
 
 
 def load_subagent(name: str, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    _validate_name(name)
     sub_dir = get_subagents_dir(cfg)
     agent_file = sub_dir / name / "AGENT.md"
     if not agent_file.is_file():
@@ -119,6 +144,7 @@ def list_subagents(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any
 
 
 def save_subagent_template(name: str, cfg: dict[str, Any] | None = None) -> Path:
+    _validate_name(name)
     sub_dir = get_subagents_dir(cfg)
     agent_dir = sub_dir / name
     agent_file = agent_dir / "AGENT.md"
@@ -163,7 +189,10 @@ def _render_adapter_file(fm: dict[str, Any], body: str) -> str:
     return f"---\n{fm_yaml}---\n"
 
 
-def render_adapters(agent: dict[str, Any]) -> dict[str, str]:
+def render_adapters(
+    agent: dict[str, Any],
+    runtimes: list[str] | None = None,
+) -> dict[str, str]:
     name = agent["name"]
     desc = agent["description"]
     model = agent.get("model", "inherit")
@@ -192,14 +221,27 @@ def render_adapters(agent: dict[str, Any]) -> dict[str, str]:
     if disallowed:
         claude_fm["disallowedTools"] = disallowed
 
-    # Cursor
+    # Cursor has a single readonly switch, which also blocks the terminal.
+    # Use it only when both editing and commands are denied. A one-sided
+    # restriction is carried in the prompt so the other capability stays usable.
     cursor_fm: dict[str, Any] = {
         "name": name,
         "description": desc,
         "model": "inherit",
     }
-    if not edit_files or not run_commands:
+    cursor_body = body
+    if not edit_files and not run_commands:
         cursor_fm["readonly"] = True
+    elif not edit_files and run_commands:
+        cursor_body = _permission_note(
+            "Do not create or edit files. You may run commands.",
+            body,
+        )
+    elif edit_files and not run_commands:
+        cursor_body = _permission_note(
+            "Do not run shell commands. You may edit files.",
+            body,
+        )
 
     # OpenCode
     opencode_fm: dict[str, Any] = {
@@ -224,22 +266,34 @@ def render_adapters(agent: dict[str, Any]) -> dict[str, str]:
     if not edit_files or not run_commands:
         tools = list(AGY_READ_TOOLS)
         if edit_files:
-            tools.append("replace_file_content")
+            tools.extend(AGY_WRITE_TOOLS)
         if run_commands:
             tools.append("run_command")
         agy_fm["tools"] = tools
 
-    return {
+    rendered = {
         f".claude/agents/{name}.md": _render_adapter_file(claude_fm, body),
-        f".cursor/agents/{name}.md": _render_adapter_file(cursor_fm, body),
+        f".cursor/agents/{name}.md": _render_adapter_file(cursor_fm, cursor_body),
         f".opencode/agents/{name}.md": _render_adapter_file(opencode_fm, body),
         f".agents/agents/{name}/agent.md": _render_adapter_file(agy_fm, body),
     }
+    if not runtimes:
+        return rendered
+    keep = {
+        _ADAPTER_KEYS[runtime].format(name=name)
+        for runtime in runtimes
+        if runtime in _ADAPTER_KEYS
+    }
+    return {path: content for path, content in rendered.items() if path in keep}
 
 
-def materialize_adapters(agent: dict[str, Any], target_dir: Path | str) -> list[str]:
+def materialize_adapters(
+    agent: dict[str, Any],
+    target_dir: Path | str,
+    runtimes: list[str] | None = None,
+) -> list[str]:
     target = Path(target_dir)
-    rendered = render_adapters(agent)
+    rendered = render_adapters(agent, runtimes=runtimes)
     written: list[str] = []
     for rel_path, content in rendered.items():
         full_path = target / rel_path
@@ -329,7 +383,8 @@ def install_subagent(
         old_files = state["subagents"][name].get("files", [])
         unmaterialize_adapters(old_files, target)
 
-    files = materialize_adapters(agent, target)
+    runtimes = state.get("runtimes") or None
+    files = materialize_adapters(agent, target, runtimes=runtimes)
 
     state = load_local_state(target)
     state.setdefault("subagents", {})[name] = {
@@ -386,12 +441,18 @@ def remove_subagent(
 
     needed_skills = set(other_skills)
     needed_mcp = set(other_mcp)
+    preset_skills: set[str] = set()
+    preset_mcp: set[str] = set()
+    preset_resolved = False
 
     if check_preset and state.get("preset"):
         try:
             preset = resolve_preset(state["preset"], cfg=cfg)
-            needed_skills.update(preset.get("skills", []))
-            needed_mcp.update(preset.get("mcp", []))
+            preset_skills = set(preset.get("skills", []))
+            preset_mcp = set(preset.get("mcp", []))
+            preset_resolved = True
+            needed_skills.update(preset_skills)
+            needed_mcp.update(preset_mcp)
         except Exception:
             needed_skills = set(state.get("skills", {}).keys())
             needed_mcp = set(state.get("mcp", {}).keys())
@@ -399,6 +460,17 @@ def remove_subagent(
     owned = state.get("subagent_owned", {})
     owned_skills = list(owned.get("skills", []))
     owned_mcp = list(owned.get("mcp", []))
+
+    transfer_skills: list[str] = []
+    transfer_mcp: list[str] = []
+    if preset_resolved:
+        transfer_skills = [
+            s for s in owned_skills if s not in other_skills and s in preset_skills
+        ]
+        transfer_mcp = [
+            m for m in owned_mcp
+            if not _is_present_mcp(m, other_mcp) and _is_present_mcp(m, preset_mcp)
+        ]
 
     to_uninstall_skills = [s for s in owned_skills if s not in needed_skills]
     to_uninstall_mcp = [m for m in owned_mcp if not _is_present_mcp(m, needed_mcp)]
@@ -415,13 +487,24 @@ def remove_subagent(
 
     state = load_local_state(target)
     if "subagent_owned" in state:
-        cur_skills = [s for s in state["subagent_owned"].get("skills", []) if s not in uninstalled_skills]
-        cur_mcp = [m for m in state["subagent_owned"].get("mcp", []) if m not in uninstalled_mcp]
+        cur_skills = [
+            s for s in state["subagent_owned"].get("skills", [])
+            if s not in uninstalled_skills and s not in transfer_skills
+        ]
+        cur_mcp = [
+            m for m in state["subagent_owned"].get("mcp", [])
+            if m not in uninstalled_mcp and m not in transfer_mcp
+        ]
         if not cur_skills and not cur_mcp and not state.get("subagents"):
             state.pop("subagent_owned", None)
         else:
             state["subagent_owned"]["skills"] = cur_skills
             state["subagent_owned"]["mcp"] = cur_mcp
+    if transfer_skills or transfer_mcp:
+        preset_owned = state.setdefault("preset_owned", {"skills": [], "mcp": [], "hooks": []})
+        preset_owned["skills"] = sorted(set(preset_owned.get("skills", [])) | set(transfer_skills))
+        preset_owned["mcp"] = sorted(set(preset_owned.get("mcp", [])) | set(transfer_mcp))
+        preset_owned.setdefault("hooks", list(preset_owned.get("hooks", [])))
     save_local_state(target, state)
 
     return {
@@ -429,6 +512,29 @@ def remove_subagent(
         "skills": uninstalled_skills,
         "mcp": uninstalled_mcp,
     }
+
+
+def sync_installed_subagents(
+    target_dir: Path | str,
+    cfg: dict[str, Any] | None = None,
+) -> None:
+    """Rewrite installed subagent files for the project's selected runtimes."""
+    target = Path(target_dir).resolve()
+    state = load_local_state(target)
+    runtimes = state.get("runtimes") or None
+    for name in list(state.get("subagents", {})):
+        entry = state["subagents"][name]
+        try:
+            agent = load_subagent(name, cfg)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"⚠️  Subagent '{name}' not rewritten: {exc}")
+            continue
+        unmaterialize_adapters(entry.get("files", []), target)
+        files = materialize_adapters(agent, target, runtimes=runtimes)
+        state = load_local_state(target)
+        if name in state.get("subagents", {}):
+            state["subagents"][name]["files"] = files
+            save_local_state(target, state)
 
 
 def unprepare_all_subagents(

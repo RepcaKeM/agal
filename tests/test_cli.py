@@ -276,6 +276,193 @@ class TestCLIIntegration(unittest.TestCase):
             out = stdout_capture.getvalue()
             self.assertIn("❌ Preset 'does-not-exist' not found", out)
 
+    def test_bare_skill_prints_help_when_not_a_tty(self):
+        with patch.dict("os.environ", self.env), patch("sys.stdin.isatty", return_value=False):
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                main(["skill"])
+            self.assertIn("usage: agal skill", stdout_capture.getvalue())
+
+    def test_preset_named_skill_does_not_shadow_skill_command(self):
+        with (
+            patch.dict("os.environ", self.env),
+            patch("sys.stdin.isatty", return_value=False),
+            patch("pathlib.Path.cwd", return_value=self.proj_dir),
+        ):
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "skill.yaml").write_text("name: skill\nskills: []\n", encoding="utf-8")
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                main(["skill"])
+            self.assertIn("usage: agal skill", stdout_capture.getvalue())
+            self.assertFalse((self.proj_dir / LOCAL_STATE_FILE).exists())
+
+    def test_skill_wizard_copies_selected_skills_for_active_runtime_and_keeps_preset_and_subagents(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "base.yaml").write_text("name: base\nskills: []\nmcp: [test-server]\n", encoding="utf-8")
+            sub_dir = self.home_dir / "subagents" / "helper"
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            (sub_dir / "AGENT.md").write_text(
+                "---\nname: helper\ndescription: Use when helping.\n---\nBody\n",
+                encoding="utf-8",
+            )
+
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                main(["runtime", "set", "cursor"])
+                main(["prepare", "base"])
+                main(["subagent", "add", "helper"])
+
+                stdout_capture = io.StringIO()
+                with (
+                    patch("sys.stdout", stdout_capture),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
+                ):
+                    main(["skill"])
+
+                self.assertIn("Installed skill 'test-skill'", stdout_capture.getvalue())
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill" / "SKILL.md").is_file())
+                self.assertFalse((self.proj_dir / ".claude" / "skills" / "test-skill").exists())
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertEqual(state.get("preset"), "base")
+                self.assertIn("helper", state.get("subagents", {}))
+
+    def test_skill_wizard_preset_branch_replaces_active_preset(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "p1.yaml").write_text("name: p1\nskills: [test-skill]\n", encoding="utf-8")
+            (presets_dir / "p2.yaml").write_text("name: p2\nskills: []\nmcp: [test-server]\n", encoding="utf-8")
+
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                main(["prepare", "p1"])
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", side_effect=[["preset"], ["p2"]]),
+                ):
+                    main(["skill"])
+
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertEqual(state.get("preset"), "p2")
+                self.assertFalse((self.proj_dir / ".agents" / "skills" / "test-skill").exists())
+                self.assertIn("test-server", state.get("mcp", {}))
+
+    def test_skill_wizard_promotes_preset_skill_to_manual(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "p1.yaml").write_text("name: p1\nskills: [test-skill]\n", encoding="utf-8")
+            (presets_dir / "p2.yaml").write_text("name: p2\nskills: []\n", encoding="utf-8")
+
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                main(["prepare", "p1"])
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertIn("test-skill", state["preset_owned"]["skills"])
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
+                ):
+                    main(["skill"])
+
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertNotIn("test-skill", state.get("preset_owned", {}).get("skills", []))
+                main(["prepare", "p2"])
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertEqual(state.get("preset"), "p2")
+                self.assertIn("test-skill", state.get("skills", {}))
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
+
+    def test_skill_wizard_empty_selections_do_nothing(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "p1.yaml").write_text("name: p1\nskills: [test-skill]\n", encoding="utf-8")
+
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                main(["prepare", "p1"])
+                before = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", return_value=[]),
+                ):
+                    main(["skill"])
+                self.assertEqual(
+                    json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8")),
+                    before,
+                )
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", side_effect=[["skills"], []]),
+                ):
+                    main(["skill"])
+                self.assertEqual(
+                    json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8")),
+                    before,
+                )
+
+    def test_add_skill_without_name_opens_picker_in_tty_and_help_in_non_tty(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                buf = io.StringIO()
+                with patch("sys.stdout", buf), patch("sys.stdin.isatty", return_value=False):
+                    main(["add", "skill"])
+                self.assertIn("usage: agal add", buf.getvalue())
+                self.assertFalse((self.proj_dir / ".agents" / "skills" / "test-skill").exists())
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("agal.cli._select_items_cli", return_value=["test-skill"]),
+                ):
+                    main(["add", "skill"])
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
+
+    def test_interactive_launcher_routes_to_skill_wizard_and_preset_replace(self):
+        with patch.dict("os.environ", self.env):
+            main(["source", "add", str(self.repo_dir), "--name", "my-source"])
+            presets_dir = self.home_dir / "presets"
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            (presets_dir / "p1.yaml").write_text("name: p1\nskills: [test-skill]\n", encoding="utf-8")
+            (presets_dir / "p2.yaml").write_text("name: p2\nskills: []\n", encoding="utf-8")
+
+            with patch("pathlib.Path.cwd", return_value=self.proj_dir):
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", return_value="10"),
+                    patch("agal.cli._select_items_cli", side_effect=[["skills"], ["test-skill"]]),
+                ):
+                    main([])
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
+
+                with (
+                    patch("sys.stdout", io.StringIO()),
+                    patch("sys.stdin.isatty", return_value=True),
+                    patch("builtins.input", return_value="1"),
+                    patch("agal.cli._select_items_cli", return_value=["p2"]),
+                ):
+                    main([])
+                state = json.loads((self.proj_dir / LOCAL_STATE_FILE).read_text(encoding="utf-8"))
+                self.assertEqual(state.get("preset"), "p2")
+                self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
