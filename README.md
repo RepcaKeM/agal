@@ -354,7 +354,7 @@ the environment when it reads `.mcp.json`.
 ## Docs
 
 - `AGENTS.md` — coding guidelines (read by all CLIs as project context)
-- `agal-summary.md` — full architecture, design evolution, known limits
+- `docs/agal-summary.md` — full architecture, design evolution, known limits
 
 ## License
 

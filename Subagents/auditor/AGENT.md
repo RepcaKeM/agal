@@ -3,7 +3,7 @@ name: auditor
 description: >-
   Read-only review of one change for correctness, risk, and guideline adherence.
   Use when reviewing code changes, auditing a diff, or verifying implementation before completion.
-model: haiku
+model: sonnet
 effort: medium
 permissions:
   edit_files: false

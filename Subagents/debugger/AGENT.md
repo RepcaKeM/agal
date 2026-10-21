@@ -3,7 +3,7 @@ name: debugger
 description: >-
   Find the cause of one bug or one failing test.
   Use when there is a bug, a test failure, or unexpected behavior to explain.
-model: haiku
+model: sonnet
 effort: medium
 permissions:
   edit_files: false
