@@ -2,6 +2,7 @@ name: orchestrator
 description: Sesja nadrzędna do kodu (frontend i backend); specjalistyczne wycinki biorą subagenci
 skills:
 - brainstorming
+- writing-plans
 - verification-before-completion
 - using-git-worktrees
 mcp:

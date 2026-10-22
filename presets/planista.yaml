@@ -1,6 +1,7 @@
 name: planista
 description: Twórca planów, przed developmentem
 skills:
+- brainstorming
 - find-docs
 - writing-plans
 mcp:
