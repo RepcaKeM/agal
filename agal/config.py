@@ -17,7 +17,7 @@ LOCAL_STATE_FILE = ".agal_state.json"
 AGAL_CONTEXT_MARKER = ".agal_context"
 AGAL_MANAGED_MARKER = ".agal_managed"
 
-CONTEXT_FILENAMES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md", "KIMI.md"]
+CONTEXT_FILENAMES = ["AGENTS.md", "CLAUDE.md"]
 
 LOCAL_SKILL_DIRS = [
     ".agents/skills",
@@ -30,7 +30,7 @@ RUNTIME_CONTEXT_FILES = {
     "claude": ("CLAUDE.md", "AGENTS.md"),
     "cursor": ("AGENTS.md",),
     "opencode": ("AGENTS.md",),
-    "agy": ("AGENTS.md", "GEMINI.md"),
+    "agy": ("AGENTS.md",),
 }
 
 
@@ -53,7 +53,7 @@ def skill_rel_dirs_for_runtimes(runtimes: list[str] | None) -> list[str]:
 def context_filenames_for_runtimes(runtimes: list[str] | None) -> list[str]:
     """Guideline filenames for an explicit runtime list.
 
-    None keeps every context filename, including KIMI.md.
+    None keeps every context filename.
     """
     if not runtimes:
         return list(CONTEXT_FILENAMES)

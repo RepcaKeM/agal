@@ -87,7 +87,8 @@ guidelines, and subagents again from their sources, overwriting local edits.
 `--prepare` creates, in the project root:
 
 - `.claude/skills/` and `.agents/skills/` — copies of the preset's skills
-- `AGENTS.md` + `CLAUDE.md` / `GEMINI.md` / `KIMI.md` — copies of the coding guidelines
+- `AGENTS.md` + `CLAUDE.md` — copies of the coding guidelines (Cursor, OpenCode, and
+  Antigravity read `AGENTS.md`; Claude Code reads `CLAUDE.md`)
   (skipped if you already have your own file by that name). With
   `adhd_rules: true` in the config, the ADHD writing rules are appended to the
   guideline files agal created and tracks, only for the runtimes selected for
@@ -263,7 +264,7 @@ and do the same thing. Re-run `agal prepare` after you edit a skill in the libra
 
 ```bash
 agal --prepare backend-dev
-git add .agents .claude AGENTS.md CLAUDE.md GEMINI.md KIMI.md
+git add .agents .claude AGENTS.md CLAUDE.md
 ```
 
 ---

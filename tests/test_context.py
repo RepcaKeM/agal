@@ -94,20 +94,28 @@ class TestContext(unittest.TestCase):
         self.assertFalse(marker.exists())
 
     def test_preexisting_file_is_skipped_and_protected(self):
-        # User manually created KIMI.md before agal
-        custom_kimi = self.target_dir / "KIMI.md"
-        custom_kimi.write_text("# My Custom KIMI config\nDo not touch.\n", encoding="utf-8")
+        # User manually created CLAUDE.md before agal
+        custom = self.target_dir / "CLAUDE.md"
+        custom.write_text("# My own CLAUDE config\nDo not touch.\n", encoding="utf-8")
 
         created = place_context_file(self.target_dir, self.guideline_src)
-        self.assertNotIn("KIMI.md", created)
-        self.assertEqual(sorted(created), sorted(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]))
-        self.assertEqual(custom_kimi.read_text(encoding="utf-8"), "# My Custom KIMI config\nDo not touch.\n")
+        self.assertEqual(created, ["AGENTS.md"])
+        self.assertEqual(custom.read_text(encoding="utf-8"), "# My own CLAUDE config\nDo not touch.\n")
 
-        # Uninstall should not touch KIMI.md
+        # Uninstall should not touch CLAUDE.md
         removed = remove_context_file(self.target_dir)
-        self.assertNotIn("KIMI.md", removed)
-        self.assertTrue(custom_kimi.exists())
+        self.assertNotIn("CLAUDE.md", removed)
+        self.assertTrue(custom.exists())
 
+    def test_gemini_and_kimi_are_no_longer_written_and_old_copies_are_removed(self):
+        for fname in ("GEMINI.md", "KIMI.md"):
+            (self.target_dir / fname).write_text("old agal copy\n", encoding="utf-8")
+        (self.target_dir / AGAL_CONTEXT_MARKER).write_text("AGENTS.md GEMINI.md KIMI.md\n")
+
+        created = place_context_file(self.target_dir, self.guideline_src)
+        self.assertEqual(sorted(created), ["AGENTS.md", "CLAUDE.md"])
+        self.assertFalse((self.target_dir / "GEMINI.md").exists())
+        self.assertFalse((self.target_dir / "KIMI.md").exists())
 
 if __name__ == "__main__":
     unittest.main()

@@ -251,7 +251,7 @@ class TestCLISubagents(unittest.TestCase):
         self._run(["prepare", "p"])
         self.assertTrue((self.proj_dir / "AGENTS.md").is_file())
         self.assertFalse((self.proj_dir / "AGENTS.md").is_symlink())
-        self.assertTrue((self.proj_dir / "GEMINI.md").is_file())
+        self.assertFalse((self.proj_dir / "GEMINI.md").exists())
         self.assertFalse((self.proj_dir / "CLAUDE.md").exists())
         self.assertFalse((self.proj_dir / "KIMI.md").exists())
         self.assertTrue((self.proj_dir / ".agents" / "skills" / "s1").is_dir())
