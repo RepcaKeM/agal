@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agal-agent-agnostic-launch"
-version = "2.1.0"
+version = "3.0.0"
 description = "Agent Agnostic Launch — per-project and global skill & MCP presets for AI agent CLIs"
 readme = "README.md"
 requires-python = ">=3.10"
