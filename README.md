@@ -267,6 +267,23 @@ agal --prepare backend-dev
 git add .agents .claude AGENTS.md CLAUDE.md
 ```
 
+Symlinks left by older agal versions break when their target moves. `agal check`
+lists broken links in the project's and your user skill directories, and
+`agal refresh` removes them. `agal update` warns about installed skills that no
+source provides any more.
+
+### Skills inside sources
+
+Source indexing skips hidden directories except `.agents/skills`,
+`.claude/skills`, `.codex/skills`, and `.cursor/skills`. To hide a source's
+internal skills, add name globs under that source in `~/.agal/sources.yaml`:
+
+```yaml
+sources:
+  rea:
+    exclude: ["rea-*"]
+```
+
 ---
 
 ## Per-project config (`AGAL_CONFIG`)

@@ -29,6 +29,8 @@ from agal.presets import (
     _select_items_cli,
 )
 from agal.skills import (
+    find_dead_skill_links,
+    find_orphaned_skills,
     install_skill,
     load_global_state,
     get_active_runtimes,
@@ -41,6 +43,7 @@ from agal.sources import (
     add_source,
     derive_source_name,
     detect_source_binaries,
+    explain_missing_skill,
     get_all_hooks,
     get_all_mcp_servers,
     get_all_skills,
@@ -179,6 +182,8 @@ def cmd_source(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
                 print(f"  ✅ {sname}: updated {res['old_commit']} → {res['new_commit']} (Skills: {res['skills_count']}{diff_skills}, MCP: {res['mcp_count']}{diff_mcp})")
             else:
                 print(f"  ⚠️  {sname}: {res.get('error')}")
+        for name in find_orphaned_skills(Path.cwd(), cfg):
+            print(f"  ⚠️  Installed skill '{name}' is no longer in any source.{explain_missing_skill(name, cfg)}")
 
     elif action == "install-tools":
         sources = load_sources_registry()
@@ -711,6 +716,12 @@ def cmd_check(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
         for m in sorted(local_mcp.keys()):
             print(f"    · {m}")
 
+    dead_links = find_dead_skill_links(cwd)
+    if dead_links:
+        print(f"\n🔗 Dead skill links ({len(dead_links)}) — 'agal refresh' removes them:")
+        for link in dead_links:
+            print(f"  ⚠️  {link} -> {link.readlink()}")
+
     subagents = list_subagents(cfg)
     print(f"\n🤖 Subagents Validation ({len(subagents)} valid):")
     if subagents:
@@ -819,6 +830,9 @@ def cmd_unprepare_alias(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
 def cmd_refresh(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
     """Copy installed skills, guidelines, and subagent files again from their sources."""
     target = Path.cwd()
+    for link in find_dead_skill_links(target):
+        link.unlink()
+        print(f"🧹 Removed dead link {link}")
     preset = load_local_state(target).get("preset")
     if preset:
         try:

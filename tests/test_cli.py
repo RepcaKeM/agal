@@ -467,6 +467,32 @@ class TestCLIIntegration(unittest.TestCase):
                 self.assertEqual(state.get("preset"), "p2")
                 self.assertTrue((self.proj_dir / ".agents" / "skills" / "test-skill").is_dir())
 
+    def test_check_and_refresh_handle_dead_links_and_update_warns_about_orphans(self):
+        def run(*argv):
+            out = io.StringIO()
+            with patch("sys.stdout", out):
+                main(list(argv))
+            return out.getvalue()
+
+        with patch.dict("os.environ", self.env), patch("pathlib.Path.cwd", return_value=self.proj_dir):
+            run("source", "add", str(self.repo_dir), "--name", "my-source")
+            run("add", "skill", "test-skill")
+            dead = self.proj_dir / ".claude" / "skills" / "old-skill"
+            dead.symlink_to(Path(self.td.name) / "gone" / "old-skill")
+
+            out = run("check")
+            self.assertIn("Dead skill links (1)", out)
+            self.assertIn(str(dead), out)
+
+            out = run("refresh")
+            self.assertIn(f"Removed dead link {dead}", out)
+            self.assertFalse(dead.is_symlink())
+
+            subprocess.run(["git", "rm", "-rq", "test-skill"], cwd=self.repo_dir, check=True)
+            subprocess.run(["git", "commit", "-qm", "drop skill"], cwd=self.repo_dir, check=True)
+            out = run("update")
+            self.assertIn("Installed skill 'test-skill' is no longer in any source", out)
+
 
 if __name__ == "__main__":
     unittest.main()

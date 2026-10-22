@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import fnmatch
 import os
 from pathlib import Path
 import re
@@ -19,6 +20,7 @@ except ImportError:
         tomllib = None
 
 from agal.config import (
+    LOCAL_SKILL_DIRS,
     get_agal_home,
     get_sources_dir,
     get_sources_file,
@@ -26,6 +28,23 @@ from agal.config import (
 )
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+# Hidden directories that hold agent skills and are indexed despite the leading dot.
+INDEXED_HIDDEN_DIRS = (*LOCAL_SKILL_DIRS, ".codex/skills", ".cursor/skills")
+
+
+def _is_skipped(dir_parts: tuple[str, ...]) -> bool:
+    """Hidden dirs (except agent skill dirs) and vendored trees are not indexed."""
+    for i, part in enumerate(dir_parts):
+        if part in ("node_modules", "vendor", "__pycache__"):
+            return True
+        if part.startswith(".") and part != "." and "/".join(dir_parts[i:i + 2]) not in INDEXED_HIDDEN_DIRS:
+            return True
+    return False
+
+
+def _is_hidden(dir_parts: tuple[str, ...]) -> bool:
+    return any(part.startswith(".") and part != "." for part in dir_parts)
 
 
 def load_sources_registry() -> dict[str, Any]:
@@ -191,14 +210,15 @@ def parse_mcp_manifest(manifest_path: Path) -> dict[str, dict[str, Any]]:
     return servers
 
 
-def index_source_dir(source_dir: Path) -> dict[str, Any]:
+def index_source_dir(source_dir: Path, exclude: list[str] | None = None) -> dict[str, Any]:
     """
     Scans a cloned directory for:
-    - skills (directories containing SKILL.md)
+    - skills (directories containing SKILL.md), minus names matching ``exclude`` globs
     - mcp (manifest files defining MCP servers)
     - hooks (scripts or hooks declarations)
     """
     skills: dict[str, dict[str, Any]] = {}
+    skill_ranks: dict[str, tuple[bool, bool]] = {}
     mcp_servers: dict[str, dict[str, Any]] = {}
     hooks: list[dict[str, Any]] = []
 
@@ -215,15 +235,14 @@ def index_source_dir(source_dir: Path) -> dict[str, Any]:
         except ValueError:
             rel_parts = candidate.parts
 
-        # Ignore skills inside hidden dirs, node_modules, tests, .git
-        if any(p.startswith(".") and p != "." for p in rel_parts[:-1]):
-            continue
-        if any(p in ["node_modules", "vendor", "__pycache__"] for p in rel_parts):
+        if _is_skipped(rel_parts[:-1]):
             continue
 
         skill_dir = candidate.parent
         meta = parse_skill_frontmatter(candidate)
         skill_name = meta.get("name") or (skill_dir.name if skill_dir != source_dir else source_dir.name)
+        if any(fnmatch.fnmatch(skill_name, pattern) for pattern in exclude or []):
+            continue
 
         # Detect auxiliary assets
         has_scripts = any(skill_dir.glob("*.sh")) or any(skill_dir.glob("scripts/*"))
@@ -238,12 +257,12 @@ def index_source_dir(source_dir: Path) -> dict[str, Any]:
             "has_references": has_references,
         }
 
-        if skill_name in skills:
-            # Prefer path inside a 'skills' folder
-            if "skills" in rel_parts:
-                skills[skill_name] = entry
-        else:
+        # Prefer a visible copy over one in a hidden dir, then a path inside a 'skills' folder
+        rank = (not _is_hidden(rel_parts[:-1]), "skills" in rel_parts)
+        old_rank = skill_ranks.get(skill_name)
+        if old_rank is None or rank > old_rank or (rank == old_rank and rank[1]):
             skills[skill_name] = entry
+            skill_ranks[skill_name] = rank
 
     # 2. Discover MCP Servers
     mcp_patterns = [
@@ -263,9 +282,7 @@ def index_source_dir(source_dir: Path) -> dict[str, Any]:
             except ValueError:
                 rel_parts = manifest_file.parts
 
-            if any(p.startswith(".") and p != "." for p in rel_parts[:-1]):
-                continue
-            if any(p in ["node_modules", "vendor", "__pycache__"] for p in rel_parts):
+            if _is_skipped(rel_parts[:-1]):
                 continue
 
             parsed = parse_mcp_manifest(manifest_file)
@@ -634,7 +651,7 @@ def list_sources(cfg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         entry["name"] = name
         path = Path(data.get("path", get_sources_dir(cfg) / name))
         if path.is_dir():
-            indexed = index_source_dir(path)
+            indexed = index_source_dir(path, data.get("exclude"))
             entry["skills_count"] = len(indexed["skills"])
             entry["mcp_count"] = len(indexed["mcp_servers"])
             entry["hooks_count"] = len(indexed["hooks"])
@@ -656,7 +673,7 @@ def get_all_skills(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any
         src_path = Path(data.get("path", get_sources_dir(cfg) / src_name))
         if not src_path.is_dir():
             continue
-        indexed = index_source_dir(src_path)
+        indexed = index_source_dir(src_path, data.get("exclude"))
         for sname, sinfo in indexed["skills"].items():
             sentry = dict(sinfo)
             sentry["source"] = src_name
@@ -686,6 +703,29 @@ def get_all_skills(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any
                 }
 
     return all_skills
+
+
+def explain_missing_skill(skill_name: str, cfg: dict[str, Any] | None = None) -> str:
+    """Says where a skill that indexing left out lives, or '' when no source has it."""
+    if cfg is None:
+        cfg = load_config()
+
+    for src_name, data in load_sources_registry().items():
+        src_path = Path(data.get("path", get_sources_dir(cfg) / src_name))
+        if not src_path.is_dir():
+            continue
+        for candidate in src_path.rglob("*"):
+            if candidate.name.lower() != "skill.md" or not candidate.is_file():
+                continue
+            if parse_skill_frontmatter(candidate)["name"] != skill_name:
+                continue
+            rel = candidate.parent.relative_to(src_path)
+            if _is_skipped(rel.parts):
+                reason = "a directory agal does not index"
+            else:
+                reason = f"skipped by the source's 'exclude' list in {get_sources_file()}"
+            return f" It exists in source '{src_name}' at {rel.as_posix()}/, {reason}."
+    return ""
 
 
 def get_all_mcp_servers(cfg: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:

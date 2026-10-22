@@ -8,6 +8,8 @@ from agal.skills import (
     uninstall_skill,
     list_installed_skills,
     load_local_state,
+    find_dead_skill_links,
+    find_orphaned_skills,
 )
 
 
@@ -89,6 +91,34 @@ class TestSkills(unittest.TestCase):
 
         installed = list_installed_skills(self.target_dir, scope="local")
         self.assertNotIn("my-skill", installed)
+
+    def test_find_dead_skill_links_reports_project_and_global_broken_links(self):
+        home = Path(self.td.name) / "home"
+        (home / ".claude" / "skills").mkdir(parents=True)
+        (home / ".claude" / "skills" / "gone-global").symlink_to(Path(self.td.name) / "missing-a")
+        (self.target_dir / ".agents" / "skills").mkdir(parents=True)
+        (self.target_dir / ".agents" / "skills" / "gone").symlink_to(Path(self.td.name) / "missing-b")
+        (self.target_dir / ".agents" / "skills" / "alive").symlink_to(self.skill_source_dir)
+        with patch.dict("os.environ", {"HOME": str(home)}):
+            dead = find_dead_skill_links(self.target_dir)
+        self.assertEqual(
+            dead,
+            [self.target_dir / ".agents" / "skills" / "gone", home / ".claude" / "skills" / "gone-global"],
+        )
+
+    @patch("agal.skills.get_all_skills")
+    def test_find_orphaned_skills_lists_installed_skills_missing_from_sources(self, mock_get_skills):
+        mock_get_skills.return_value = self.mock_skills
+        install_skill("my-skill", target_dir=self.target_dir, scope="local")
+        mock_get_skills.return_value = {}
+        with patch("agal.skills.load_global_state", return_value={"skills": {}}):
+            self.assertEqual(find_orphaned_skills(self.target_dir), ["my-skill"])
+
+    @patch("agal.skills.explain_missing_skill", return_value=" It exists in source 'rea' at .x/y/, skipped.")
+    @patch("agal.skills.get_all_skills", return_value={})
+    def test_install_missing_skill_error_explains_where_it_is(self, _skills, _explain):
+        with self.assertRaisesRegex(ValueError, "not found in any registered source. It exists in source 'rea'"):
+            install_skill("y", target_dir=self.target_dir, cfg={})
 
 
 if __name__ == "__main__":

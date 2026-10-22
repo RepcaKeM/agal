@@ -8,13 +8,14 @@ import yaml
 
 from agal.config import (
     GLOBAL_SKILL_DIRS,
+    LOCAL_SKILL_DIRS,
     LOCAL_STATE_FILE,
     SUPPORTED_RUNTIMES,
     get_installed_file,
     load_config,
     skill_rel_dirs_for_runtimes,
 )
-from agal.sources import get_all_skills
+from agal.sources import explain_missing_skill, get_all_skills
 
 
 def load_local_state(target_dir: Path) -> dict[str, Any]:
@@ -132,7 +133,10 @@ def install_skill(
     if all_skills is None:
         all_skills = get_all_skills(cfg)
     if skill_name not in all_skills:
-        raise ValueError(f"Skill '{skill_name}' not found in any registered source.")
+        raise ValueError(
+            f"Skill '{skill_name}' not found in any registered source."
+            + explain_missing_skill(skill_name, cfg)
+        )
 
     skill_info = all_skills[skill_name]
     src_path = Path(skill_info["path"])
@@ -278,3 +282,23 @@ def list_installed_skills(
     elif scope == "global":
         return load_global_state().get("skills", {})
     return {}
+
+
+def find_dead_skill_links(target_dir: Path) -> list[Path]:
+    """Broken symlinks in the project's and the user's skill directories."""
+    # Same dirs as GLOBAL_SKILL_DIRS, but HOME is read now rather than at import.
+    dirs = dict.fromkeys(root / rel for root in (target_dir, Path.home()) for rel in LOCAL_SKILL_DIRS)
+    return [
+        p
+        for d in dirs
+        if d.is_dir()
+        for p in sorted(d.iterdir())
+        if p.is_symlink() and not p.exists()
+    ]
+
+
+def find_orphaned_skills(target_dir: Path, cfg: dict[str, Any] | None = None) -> list[str]:
+    """Skills installed in the project or globally that no registered source provides."""
+    available = get_all_skills(cfg)
+    installed = set(load_local_state(target_dir).get("skills", {})) | set(load_global_state().get("skills", {}))
+    return sorted(name for name in installed if name not in available)

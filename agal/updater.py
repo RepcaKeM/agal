@@ -168,7 +168,7 @@ def update_sources(
                 ["git", "rev-parse", "HEAD"], cwd=src_path, text=True
             ).strip()
 
-            indexed = index_source_dir(src_path)
+            indexed = index_source_dir(src_path, src_info.get("exclude"))
             sources[name]["head_commit"] = new_commit
             sources[name]["last_checked"] = datetime.datetime.now().isoformat()
             sources[name]["skills_count"] = len(indexed["skills"])

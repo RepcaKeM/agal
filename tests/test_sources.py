@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from agal.sources import (
     derive_source_name,
@@ -256,6 +257,59 @@ class TestSources(unittest.TestCase):
                 skills = agal.sources.get_all_skills(cfg)
                 self.assertIn("sk1", skills)
                 self.assertEqual(spy_index.call_count, 1)
+
+    def _write_skill(self, skill_dir, name):
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(f"---\nname: {name}\ndescription: d\n---\n", encoding="utf-8")
+
+    def test_index_includes_agent_skill_dirs_but_skips_other_hidden_dirs(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td)
+            for rel in (".agents/skills", ".claude/skills", ".codex/skills", ".cursor/skills"):
+                self._write_skill(src / rel / rel.split("/")[0].strip("."), rel.split("/")[0].strip("."))
+            self._write_skill(src / ".github" / "hidden", "hidden")
+            self._write_skill(src / ".agents" / "notes" / "loose", "loose")
+            (src / ".agents" / "skills" / "agents" / "mcp.json").write_text(
+                json.dumps({"mcpServers": {"skill-server": {"command": "x"}}}), encoding="utf-8"
+            )
+            indexed = index_source_dir(src)
+            self.assertEqual(sorted(indexed["skills"]), ["agents", "claude", "codex", "cursor"])
+            self.assertIn("skill-server", indexed["mcp_servers"])
+
+    def test_index_prefers_visible_copy_over_hidden_duplicate(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td)
+            self._write_skill(src / ".claude" / "skills" / "dup", "dup")
+            self._write_skill(src / "skills" / "dup", "dup")
+            indexed = index_source_dir(src)
+            self.assertEqual(indexed["skills"]["dup"]["path"], str((src / "skills" / "dup").resolve()))
+
+    def test_get_all_skills_honours_source_exclude(self):
+        import agal.sources
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "rea"
+            self._write_skill(src / ".agents" / "skills" / "reverse-engineer-anything", "reverse-engineer-anything")
+            self._write_skill(src / ".agents" / "skills" / "rea-changelog-update", "rea-changelog-update")
+            cfg = {"sources_dir": str(td), "skills_dir": str(Path(td) / "no-bundled")}
+            registry = {"rea": {"path": str(src), "exclude": ["rea-*"]}}
+            with patch("agal.sources.load_sources_registry", return_value=registry):
+                self.assertEqual(sorted(agal.sources.get_all_skills(cfg)), ["reverse-engineer-anything"])
+                self.assertIn("rea-changelog-update", agal.sources.explain_missing_skill("rea-changelog-update", cfg))
+                self.assertIn("exclude", agal.sources.explain_missing_skill("rea-changelog-update", cfg))
+
+    def test_explain_missing_skill_names_source_and_skipped_dir(self):
+        import agal.sources
+
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "s1"
+            self._write_skill(src / ".openclaw" / "skills" / "claw", "claw")
+            cfg = {"sources_dir": str(td)}
+            with patch("agal.sources.load_sources_registry", return_value={"s1": {"path": str(src)}}):
+                msg = agal.sources.explain_missing_skill("claw", cfg)
+                self.assertIn("'s1'", msg)
+                self.assertIn(".openclaw/skills/claw", msg)
+                self.assertEqual(agal.sources.explain_missing_skill("nope", cfg), "")
 
 
 if __name__ == "__main__":
