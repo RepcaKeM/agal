@@ -10,7 +10,7 @@ from agal.config import (
 )
 
 _USE_WHEN_RE = re.compile(
-    r"\bUse(?:\s+this)?\s+(?:when|before|during|after|for)\s+(.+?)(?:\.\s|\.\Z|\Z)",
+    r"\bUse(?:\s+this(?:\s+skill)?)?\s+(?:whenever|when|before|during|after|for)\s+(.+?)(?:\.\s|\.\Z|\Z)",
     re.IGNORECASE | re.DOTALL,
 )
 _ARTICLE_RE = re.compile(r"^(a|an|the|or|any)\s+", re.IGNORECASE)

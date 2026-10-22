@@ -39,6 +39,16 @@ class TestContext(unittest.TestCase):
         text_without_frontmatter = "# No frontmatter"
         self.assertEqual(extract_triggers(text_without_frontmatter), "")
 
+        text_whenever = (
+            "---\n"
+            "name: find-docs\n"
+            "description: >-\n"
+            "  Retrieves documentation. Use this skill whenever the user asks about a\n"
+            "  library, framework, or SDK.\n"
+            "---\n"
+        )
+        self.assertEqual(extract_triggers(text_whenever), "user asks about a library|framework|SDK")
+
         text_no_use_when = "---\nname: simple\ndescription: A simple skill.\n---\n"
         self.assertEqual(extract_triggers(text_no_use_when), "")
 
