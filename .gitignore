@@ -10,6 +10,7 @@ venv/
 # agal-generated artifacts (skill + context symlinks/copies)
 .agents/
 .claude/
+.cursor/
 .agal_managed
 .agal_context
 .agal_state.json
