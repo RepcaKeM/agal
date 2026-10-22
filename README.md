@@ -202,6 +202,7 @@ description: >-             # required; used by runtimes to decide when to deleg
   Deep codebase exploration, web research, and documentation queries.
   Use when the user asks for deep research, architecture analysis, or documentation search.
 model: inherit              # optional: inherit | sonnet | opus | haiku (default: inherit)
+effort: medium              # optional: low | medium | high | xhigh | max
 permissions:                # optional tool restrictions (both default to true)
   edit_files: false
   run_commands: true
@@ -218,6 +219,7 @@ You are a dedicated research subagent. Your role is strictly investigative: expl
 - **`name`** (*string*, required): Unique name matching the directory name (`Subagents/<name>/`).
 - **`description`** (*string*, required): Used by agent runtimes to determine when to delegate tasks. Should always include a `"Use when..."` clause.
 - **`model`** (*string*, default: `inherit`): Model preference (`inherit`, `sonnet`, `opus`, `haiku`). Passed through to Claude Code; other runtimes inherit their session model.
+- **`effort`** (*string*, optional): Reasoning effort (`low`, `medium`, `high`, `xhigh`, `max`). Written only into the Claude Code adapter.
 - **`permissions`** (*mapping*, default: `{edit_files: true, run_commands: true}`):
   - `edit_files`: Set `false` to restrict file editing and creation.
   - `run_commands`: Set `false` to restrict shell execution.
