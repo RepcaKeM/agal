@@ -133,7 +133,7 @@ class TestCLISubagents(unittest.TestCase):
             patch("builtins.input", return_value=""),
         ):
             out = self._run(["start"])
-        self.assertIn("Step 4 of 4", out)
+        self.assertIn("Step 6 of 6", out)
         self.assertEqual(offered[3], ["s3"])
         state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
         self.assertEqual(state.get("runtimes"), ["claude"])
@@ -142,6 +142,103 @@ class TestCLISubagents(unittest.TestCase):
         self.assertEqual(sorted(state.get("skills", {})), ["s1", "s2", "s3"])
         self.assertNotIn("s3", state.get("preset_owned", {}).get("skills", []))
         self.assertTrue((self.proj_dir / ".claude" / "skills" / "s3").is_dir())
+
+    def test_start_installs_selected_hook(self):
+        hook_src = Path(self.td.name) / "sources" / "hooky"
+        plugin_dir = hook_src / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            json.dumps({
+                "name": "hm",
+                "plugins": [{"name": "hp", "source": "./"}],
+            }),
+            encoding="utf-8",
+        )
+        (hook_src / "hooks").mkdir()
+        (self.home_dir / "sources.yaml").write_text(
+            yaml.safe_dump({"sources": {"hooky": {"path": str(hook_src)}}}),
+            encoding="utf-8",
+        )
+
+        answers = [["claude"], ["p"], ["beta"], ["hooky"]]
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=lambda *a, **k: answers.pop(0)),
+            patch("builtins.input", return_value=""),
+        ):
+            out = self._run(["start"])
+
+        self.assertIn("Step 4 of 6", out)
+        settings = json.loads(
+            (self.proj_dir / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(settings["enabledPlugins"], {"hp@hm": True})
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            state["hooks"]["hooky"]["adapters"]["claude"],
+            {"marketplace": "hm", "plugin": "hp"},
+        )
+
+    def test_start_reconciles_agal_items_and_keeps_manual_ones(self):
+        for name in ("s3", "s4"):
+            (self.skills_dir / name).mkdir()
+            (self.skills_dir / name / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: Use when {name}.\n---\nBody\n",
+                encoding="utf-8",
+            )
+        self._run(["add", "skill", "s3"])
+        self._run(["add", "mcp", "m1"])
+
+        manual_skill = self.proj_dir / ".agents" / "skills" / "manual"
+        manual_skill.mkdir(parents=True)
+        (manual_skill / "SKILL.md").write_text("---\nname: manual\n---\n", encoding="utf-8")
+        mcp_path = self.proj_dir / ".mcp.json"
+        mcp_data = json.loads(mcp_path.read_text(encoding="utf-8"))
+        mcp_data["mcpServers"]["manual-mcp"] = {"command": "echo"}
+        mcp_path.write_text(json.dumps(mcp_data), encoding="utf-8")
+
+        servers = {
+            "m1": MCP_FIXTURE["m1"],
+            "m2": {"config": {"command": "echo"}, "source": "test"},
+        }
+        answers = [["claude"], ["p"], ["beta"], ["m2"], ["s4"]]
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli.get_all_mcp_servers", return_value=servers),
+            patch("agal.cli._select_items_cli", side_effect=lambda *a, **k: answers.pop(0)),
+            patch("builtins.input", side_effect=["y", "y"]),
+        ):
+            self._run(["start"])
+
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertNotIn("s3", state["skills"])
+        self.assertIn("s4", state["skills"])
+        self.assertNotIn("m1", state["mcp"])
+        self.assertIn("m2", state["mcp"])
+        self.assertNotIn("manual", state["skills"])
+        self.assertTrue((manual_skill / "SKILL.md").is_file())
+        mcp_data = json.loads(mcp_path.read_text(encoding="utf-8"))
+        self.assertNotIn("m1", mcp_data["mcpServers"])
+        self.assertIn("m2", mcp_data["mcpServers"])
+        self.assertIn("manual-mcp", mcp_data["mcpServers"])
+
+    def test_start_removes_unselected_subagent_and_its_unused_deps(self):
+        self._run(["subagent", "add", "alpha"])
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "alpha.md").is_file())
+
+        answers = [["claude"], ["p"], ["beta"]]
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("agal.cli._select_items_cli", side_effect=lambda *a, **k: answers.pop(0)),
+            patch("builtins.input", return_value="y"),
+        ):
+            self._run(["start"])
+
+        state = json.loads((self.proj_dir / ".agal_state.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(state.get("subagents", {})), ["beta"])
+        self.assertFalse((self.proj_dir / ".claude" / "agents" / "alpha.md").exists())
+        self.assertTrue((self.proj_dir / ".claude" / "agents" / "beta.md").is_file())
+        self.assertNotIn("m1", state.get("mcp", {}))
 
     def test_start_skips_every_step_on_empty_selection(self):
         with (

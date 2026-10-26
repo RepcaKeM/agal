@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -339,6 +340,59 @@ class TestPresets(unittest.TestCase):
         self.assertEqual(state["preset_owned"]["mcp"], ["figma"])
         self.assertNotIn("manual-one", state["preset_owned"]["skills"])
         self.assertNotIn("old-mcp", state["preset_owned"]["mcp"])
+
+    def test_preset_hooks_install_and_uninstall_selected_adapters(self):
+        from agal.skills import load_local_state, save_local_state
+
+        src = Path(self.td.name) / "sources" / "fixture-src"
+        src.mkdir(parents=True)
+        plugin_dir = src / ".claude-plugin"
+        plugin_dir.mkdir()
+        (plugin_dir / "marketplace.json").write_text(
+            json.dumps({
+                "name": "fixture-market",
+                "plugins": [{"name": "fixture-plugin", "source": "./"}],
+            }),
+            encoding="utf-8",
+        )
+        (src / "hooks").mkdir()
+        entry = src / ".opencode" / "plugins" / "index.js"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("export default {}\n", encoding="utf-8")
+        bundle = {
+            "name": "fixture-src",
+            "path": str(src),
+            "source": "fixture-src",
+            "adapters": {
+                "claude": {"marketplace": "fixture-market", "plugin": "fixture-plugin"},
+                "opencode": str(entry.resolve()),
+            },
+        }
+
+        cfg = {**self.cfg, "context_file": str(Path(self.td.name) / "none.md")}
+        save_preset("hooky", "Hooks", [], [], hooks=["fixture-src"], cfg=cfg)
+        save_local_state(self.target_dir, {"runtimes": ["claude", "opencode"]})
+        with patch("agal.presets.get_all_skills", return_value={}), \
+             patch("agal.presets.get_all_hooks", return_value={"fixture-src": bundle}):
+            install_preset("hooky", target_dir=self.target_dir, scope="local", cfg=cfg)
+
+        settings = json.loads(
+            (self.target_dir / ".claude" / "settings.local.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(settings["enabledPlugins"], {"fixture-plugin@fixture-market": True})
+        self.assertTrue(
+            (self.target_dir / ".opencode" / "plugins" / "agal-fixture-src.js").is_file()
+        )
+
+        with patch("agal.presets.get_all_skills", return_value={}), \
+             patch("agal.presets.get_all_hooks", return_value={"fixture-src": bundle}):
+            uninstall_preset(target_dir=self.target_dir, scope="local", cfg=cfg)
+
+        self.assertFalse((self.target_dir / ".claude" / "settings.local.json").exists())
+        self.assertFalse(
+            (self.target_dir / ".opencode" / "plugins" / "agal-fixture-src.js").exists()
+        )
+        self.assertEqual(load_local_state(self.target_dir).get("hooks", {}), {})
 
     @patch("sys.stdout")
     @patch("builtins.input", side_effect=["1, 3"])

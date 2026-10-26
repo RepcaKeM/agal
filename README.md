@@ -67,7 +67,7 @@ with the rest of this repo.
 ```bash
 cd ~/projects/my-project
 
-agal start                      # guided: IDE/CLI → preset → subagents → extra skills
+agal start                      # guided: IDE/CLI → preset → subagents → hooks → MCP → extra skills
 agal --prepare orchestrator     # parent session; specialized work goes to subagents
 agal subagent add researcher   # add a dedicated research subagent
 agal --status                  # show active preset and project status
@@ -77,6 +77,12 @@ agal --unprepare               # remove everything agal created (preset + subage
 # Interactive: pick preset → pick CLI → launch
 agal
 ```
+
+`agal start` is also the reconcile command: Enter keeps the current choice in a
+step; selecting a set installs what is missing and asks before removing
+agal-managed items that were not selected. Preset resources, selected subagent
+dependencies, and anything agal does not track (hand-copied skills, hand-edited
+MCP config) are kept.
 
 A project already prepared with an older preset picks up `orchestrator` or
 `uop-b2b-szukanie` by running that prepare again, then adding the subagents
@@ -225,7 +231,7 @@ You are a dedicated research subagent. Your role is strictly investigative: expl
   - `edit_files`: Set `false` to restrict file editing and creation.
   - `run_commands`: Set `false` to restrict shell execution.
 - **`skills`** (*list of strings*, default: `[]`): Skills required by the subagent. Automatically installed into `.claude/skills/` and `.agents/skills/`.
-- **`mcp`** (*list of strings*, default: `[]`): MCP servers required by the subagent. Automatically configured in `.mcp.json`.
+- **`mcp`** (*list of strings*, default: `[]`): MCP servers required by the subagent. Automatically configured in the project MCP file(s) for the selected runtimes.
 - **Markdown Body**: The system prompt defining the subagent's role, instructions, and operating behavior.
 
 #### Permission mapping
@@ -243,7 +249,7 @@ You are a dedicated research subagent. Your role is strictly investigative: expl
 
 When installing a subagent:
 - Any declared `skills` are linked project-locally.
-- Any declared `mcp` servers are added to project `.mcp.json`.
+- Any declared `mcp` servers are added to the project MCP file(s) for the selected runtimes.
 - Newly installed dependencies are tracked in `.agal_state.json` under `subagent_owned`.
 
 When removing a subagent (`agal subagent remove <name>`):
@@ -251,8 +257,19 @@ When removing a subagent (`agal subagent remove <name>`):
 - Pre-existing dependencies (manually installed before the subagent or owned by a preset) are never deleted.
 - Running `agal unprepare` or `agal --unprepare` cleanly tears down all subagents before unlinking preset resources.
 
-> [!IMPORTANT]
-> **MCP files:** Claude Code reads project `.mcp.json`. When this project's runtime selection includes Cursor, `agal` also writes `.cursor/mcp.json`. OpenCode and Antigravity do not read either file. A project that has not run `agal runtime set` keeps the previous behavior and writes only `.mcp.json`.
+> [!NOTE]
+> **Project MCP files:** a project that never ran `agal runtime set` writes only `.mcp.json` (Claude). Selected runtimes add their own file:
+>
+> | Runtime | Project file | Shape |
+> |---|---|---|
+> | Claude Code | `.mcp.json` | `mcpServers` |
+> | Cursor | `.cursor/mcp.json` | `mcpServers` |
+> | OpenCode | `opencode.json` | flat `mcp` (v2 reads it as `mcp.servers`) |
+> | Antigravity | `.agents/mcp_config.json` | `mcpServers` |
+>
+> Global installs stay Claude-only (`~/.claude.json`). An existing `opencode.json` or `.agents/mcp_config.json` that is not valid JSON is left byte-identical, with a warning.
+>
+> **Environment variables:** stdio servers whose `command`, `args`, or `env` contain `${VAR}` or `${VAR:-default}` are wrapped in `sh -c` for OpenCode and Antigravity, so the shell expands them exactly as Claude does. OpenCode converts remote `${VAR}` to `{env:VAR}`; a `${VAR:-default}` loses its default with a warning. Antigravity expands nothing, so a remote server with a variable in its url or headers is not written there — add it by hand with `agy mcp add`. Antigravity also supports Streamable HTTP only, so an `sse` server gets a warning.
 
 ---
 
@@ -349,7 +366,7 @@ agal update                                 # pull updates for all sources
 agal status                                 # active local preset & global items
 
 # Project Shortcuts (backward compatible)
-agal start                                  # guided: IDE/CLI, preset, subagents, extra skills
+agal start                                  # guided reconcile: runtime, preset, subagents, hooks, MCP, extra skills
 agal prepare <name>                         # copy skills + MCP into current project
 agal refresh                                # copy installed items again from sources
 agal unprepare                              # cleanly remove everything agal created
@@ -369,7 +386,28 @@ itsaplan:
 ```
 
 Never commit secrets — use `${VAR}` placeholders; Claude Code expands them from
-the environment when it reads `.mcp.json`.
+the environment when it reads `.mcp.json`. OpenCode and Antigravity receive the
+conversion described in the project MCP note above.
+
+### Hooks (project scope)
+
+`agal add hook <source>` activates the adapter that source already ships, for each
+selected runtime. The unit is a whole source, not a copied file:
+
+| Runtime | What agal writes | What the source must ship |
+|---|---|---|
+| Claude Code | `.claude/settings.local.json`: `extraKnownMarketplaces` + `enabledPlugins` | `.claude-plugin/marketplace.json` and `hooks/` (or `hooks` in `plugin.json`) |
+| OpenCode | `.opencode/plugins/agal-<source>.js` stub re-exporting the source plugin | `.opencode/plugins/index.js`, `<source>.js`, or a single `.js`/`.ts` |
+| Antigravity | `agal-<source>-<hook>` keys merged into `.agents/hooks.json` | Antigravity-format `hooks.json` in `.antigravity-plugin/` |
+
+Hooks are project-scope only; `--global` is rejected. Hooks are not translated
+between runtimes: a source without an adapter for a selected runtime is skipped
+with a warning. Enabling a Claude or OpenCode plugin also loads that plugin's own
+skills and commands, so a skill agal copied into the project may appear twice
+(namespaced for Claude). When you accept the project marketplace, Claude records
+it in `~/.claude/plugins/known_marketplaces.json`; agal never writes that file —
+remove the leftover with `claude plugin marketplace remove <name>`. The OpenCode
+stub and the `sh -c` MCP wrapper require a POSIX `sh` (Windows is not supported).
 
 ---
 

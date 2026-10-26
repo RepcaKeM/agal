@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime
 import fnmatch
-import os
 from pathlib import Path
 import re
 import shutil
@@ -28,6 +27,15 @@ from agal.config import (
 )
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+AGY_EVENTS = {
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "PreInvocation",
+    "PostInvocation",
+    "Stop",
+}
 
 # Hidden directories that hold agent skills and are indexed despite the leading dot.
 INDEXED_HIDDEN_DIRS = (*LOCAL_SKILL_DIRS, ".codex/skills", ".cursor/skills")
@@ -210,6 +218,98 @@ def parse_mcp_manifest(manifest_path: Path) -> dict[str, dict[str, Any]]:
     return servers
 
 
+def _claude_hook_adapter(source_dir: Path) -> dict[str, str] | None:
+    marketplace_file = source_dir / ".claude-plugin" / "marketplace.json"
+    try:
+        import json
+        marketplace = json.loads(marketplace_file.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(marketplace, dict) or not isinstance(marketplace.get("name"), str):
+        return None
+    plugins = marketplace.get("plugins")
+    if not isinstance(plugins, list):
+        return None
+    plugin = next(
+        (
+            item.get("name") for item in plugins
+            if isinstance(item, dict) and item.get("source") in ("./", ".")
+        ),
+        None,
+    )
+    if not isinstance(plugin, str) or not plugin:
+        return None
+
+    declares_hooks = False
+    plugin_file = source_dir / ".claude-plugin" / "plugin.json"
+    if plugin_file.is_file():
+        try:
+            import json
+            plugin_data = json.loads(plugin_file.read_text(encoding="utf-8"))
+            declares_hooks = isinstance(plugin_data, dict) and "hooks" in plugin_data
+        except Exception:
+            pass
+    if not (source_dir / "hooks").is_dir() and not declares_hooks:
+        return None
+    return {"marketplace": marketplace["name"], "plugin": plugin}
+
+
+def _opencode_hook_adapter(source_dir: Path) -> str | None:
+    plugins_dir = source_dir / ".opencode" / "plugins"
+    if not plugins_dir.is_dir():
+        return None
+    for candidate in (plugins_dir / "index.js", plugins_dir / f"{source_dir.name}.js"):
+        if candidate.is_file():
+            return str(candidate.resolve())
+    scripts = sorted(
+        path for path in plugins_dir.iterdir()
+        if path.is_file() and path.suffix in (".js", ".ts")
+    )
+    return str(scripts[0].resolve()) if len(scripts) == 1 else None
+
+
+def _agy_hook_adapter(source_dir: Path) -> str | None:
+    candidates = [source_dir / ".antigravity-plugin" / "hooks.json"]
+    if (source_dir / "plugin.json").is_file():
+        candidates.append(source_dir / "hooks.json")
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            import json
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if all(
+            isinstance(value, dict) and set(value) <= ({"enabled"} | AGY_EVENTS)
+            for value in data.values()
+        ):
+            return str(path.resolve())
+    return None
+
+
+def _hook_bundle(source_dir: Path) -> dict[str, Any] | None:
+    adapters: dict[str, Any] = {}
+    claude = _claude_hook_adapter(source_dir)
+    if claude:
+        adapters["claude"] = claude
+    opencode = _opencode_hook_adapter(source_dir)
+    if opencode:
+        adapters["opencode"] = opencode
+    agy = _agy_hook_adapter(source_dir)
+    if agy:
+        adapters["agy"] = agy
+    if not adapters:
+        return None
+    return {
+        "name": source_dir.name,
+        "path": str(source_dir.resolve()),
+        "adapters": adapters,
+    }
+
+
 def index_source_dir(source_dir: Path, exclude: list[str] | None = None) -> dict[str, Any]:
     """
     Scans a cloned directory for:
@@ -360,15 +460,9 @@ def index_source_dir(source_dir: Path, exclude: list[str] | None = None) -> dict
             pass
 
     # 3. Discover Hooks
-    hooks_dir = source_dir / "hooks"
-    if hooks_dir.is_dir():
-        for hook_file in hooks_dir.iterdir():
-            if hook_file.is_file() and not hook_file.name.startswith("."):
-                hooks.append({
-                    "name": hook_file.name,
-                    "path": str(hook_file.resolve()),
-                    "executable": os.access(hook_file, os.X_OK),
-                })
+    bundle = _hook_bundle(source_dir)
+    if bundle:
+        hooks.append(bundle)
 
     return {
         "skills": skills,

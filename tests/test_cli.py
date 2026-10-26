@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from agal.cli import main
+from agal.cli import _reconcile_managed, main
 from agal.config import LOCAL_STATE_FILE
 
 
@@ -262,10 +262,12 @@ class TestCLIIntegration(unittest.TestCase):
 
     def test_cmd_error_handling_graceful(self):
         with patch.dict("os.environ", self.env):
-            # Non-existent skill
+            # Non-existent skill exits non-zero after reporting the error
             stdout_capture = io.StringIO()
             with patch("sys.stdout", stdout_capture):
-                main(["add", "skill", "does-not-exist"])
+                with self.assertRaises(SystemExit) as caught:
+                    main(["add", "skill", "does-not-exist"])
+            self.assertEqual(caught.exception.code, 1)
             out = stdout_capture.getvalue()
             self.assertIn("❌ Skill 'does-not-exist' not found in any registered source", out)
 
@@ -275,6 +277,92 @@ class TestCLIIntegration(unittest.TestCase):
                 main(["prepare", "does-not-exist"])
             out = stdout_capture.getvalue()
             self.assertIn("❌ Preset 'does-not-exist' not found", out)
+
+    def test_add_global_hook_is_rejected(self):
+        with patch.dict("os.environ", self.env):
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                with self.assertRaises(SystemExit) as caught:
+                    main(["add", "hook", "anything", "--global"])
+            self.assertEqual(caught.exception.code, 1)
+            self.assertIn(
+                "Global hook installation is not supported; install hooks per project.",
+                stdout_capture.getvalue(),
+            )
+
+    def test_list_hooks_shows_adapters(self):
+        bundles = {
+            "ponytail": {
+                "source": "ponytail",
+                "adapters": {"claude": {"marketplace": "ponytail", "plugin": "ponytail"}},
+            }
+        }
+        with patch.dict("os.environ", self.env), \
+             patch("agal.cli.get_all_hooks", return_value=bundles):
+            stdout_capture = io.StringIO()
+            with patch("sys.stdout", stdout_capture):
+                main(["list", "hooks"])
+        out = stdout_capture.getvalue()
+        self.assertIn("ponytail", out)
+        self.assertIn("[claude]", out)
+
+    def test_reconcile_managed_replaces_selection(self):
+        installed, removed = [], []
+        with patch("agal.cli._select_items_cli", return_value=["new"]), \
+             patch("builtins.input", return_value="y"):
+            _reconcile_managed(
+                "Pick",
+                {"old": "old", "new": "new"},
+                {"old"},
+                installed.append,
+                removed.append,
+            )
+        self.assertEqual(installed, ["new"])
+        self.assertEqual(removed, ["old"])
+
+    def test_reconcile_managed_enter_keeps_current(self):
+        installed, removed = [], []
+        with patch("agal.cli._select_items_cli", return_value=[]):
+            _reconcile_managed(
+                "Pick",
+                {"old": "old", "new": "new"},
+                {"old"},
+                installed.append,
+                removed.append,
+            )
+        self.assertEqual(installed, [])
+        self.assertEqual(removed, [])
+
+    def test_reconcile_managed_no_confirmation_keeps_unselected(self):
+        installed, removed = [], []
+        with patch("agal.cli._select_items_cli", return_value=["new"]), \
+             patch("builtins.input", return_value="n"):
+            _reconcile_managed(
+                "Pick",
+                {"old": "old", "new": "new"},
+                {"old"},
+                installed.append,
+                removed.append,
+            )
+        self.assertEqual(installed, ["new"])
+        self.assertEqual(removed, [])
+
+    def test_reconcile_managed_aborts_removal_when_install_fails(self):
+        removed = []
+
+        def install(name):
+            raise ValueError("boom")
+
+        with patch("agal.cli._select_items_cli", return_value=["new"]), \
+             patch("builtins.input", return_value="y"):
+            _reconcile_managed(
+                "Pick",
+                {"old": "old", "new": "new"},
+                {"old"},
+                install,
+                removed.append,
+            )
+        self.assertEqual(removed, [])
 
     def test_bare_skill_prints_help_when_not_a_tty(self):
         with patch.dict("os.environ", self.env), patch("sys.stdin.isatty", return_value=False):

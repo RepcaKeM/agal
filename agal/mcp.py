@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 from typing import Any, Collection
 
 from agal.config import (
@@ -18,9 +19,8 @@ from agal.skills import (
 from agal.sources import get_all_mcp_servers
 
 LOCAL_MCP_FILE = ".mcp.json"
-CURSOR_MCP_FILE = ".cursor/mcp.json"
-PROJECT_MCP_FILES = (LOCAL_MCP_FILE, CURSOR_MCP_FILE)
 CLAUDE_GLOBAL_CONFIG = Path.home() / ".claude.json"
+
 
 
 def _mcp_key(server_name: str, servers: Collection[str]) -> str | None:
@@ -40,22 +40,45 @@ def mcp_matches(server_name: str, pool: Collection[str]) -> bool:
     return _mcp_key(server_name, pool) is not None
 
 
-def _drop_server(path: Path, server_name: str, project_root: Path) -> bool:
+def _drop_server(path: Path, server_name: str, project_root: Path, rel: str) -> bool:
     """Remove one server from a project MCP file. Deletes the file when it becomes empty."""
-    if not path.is_file():
+    target = MCP_TARGETS[rel]
+    mcp_data = _read_target_file(path, target)
+    if mcp_data is None:
         return False
-    mcp_data = _read_json_file(path)
-    servers = mcp_data.get("mcpServers", {})
+    servers = mcp_data.get(target["container"], {})
+    if not isinstance(servers, dict):
+        return False
     key = _mcp_key(server_name, servers)
     if key is None:
         return False
     del servers[key]
-    if not servers and not any(name != "mcpServers" for name in mcp_data):
+    allowed_empty = set(target.get("empty_keys", ()))
+    leftovers = {
+        name for name in mcp_data
+        if name != target["container"] and name not in allowed_empty
+    }
+    if not servers and not leftovers:
         path.unlink(missing_ok=True)
         _prune_empty_parents(path.parent, project_root)
     else:
         _write_json_file(path, mcp_data)
     return True
+
+
+def _read_target_file(path: Path, target: dict[str, Any]) -> dict[str, Any] | None:
+    """Read a project MCP file. None means a strict target holds invalid JSON or no object."""
+    if not path.is_file():
+        return {}
+    if target.get("strict"):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+    return _read_json_file(path)
+
 
 
 def _read_json_file(path: Path) -> dict[str, Any]:
@@ -74,6 +97,157 @@ def _write_json_file(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _shell_text(text: str) -> str:
+    return "".join("\\" + ch if ch in '\\"`$' else ch for ch in text)
+
+
+def _shell_word(word: str) -> str:
+    """Double-quote one shell word, leaving Claude ${VAR} references for the shell."""
+    parts: list[str] = []
+    pos = 0
+    for match in ENV_REF_RE.finditer(word):
+        parts.append(_shell_text(word[pos:match.start()]))
+        default = match.group(2)
+        if default is None:
+            parts.append(match.group(0))
+        else:
+            parts.append(f"${{{match.group(1)}:-{_shell_text(default)}}}")
+        pos = match.end()
+    parts.append(_shell_text(word[pos:]))
+    return '"' + "".join(parts) + '"'
+
+
+def _sh_wrap(
+    command: str, args: list[str], env: dict[str, str]
+) -> tuple[str, list[str], dict[str, str]]:
+    """Run a stdio server through sh so ${VAR} and ${VAR:-default} expand like Claude's."""
+    assignments: list[str] = []
+    literal_env: dict[str, str] = {}
+    for key, value in env.items():
+        value = str(value)
+        if ENV_REF_RE.search(value):
+            assignments.append(f"{key}={_shell_word(value)}")
+        else:
+            literal_env[key] = value
+    words = ["exec", _shell_word(str(command))]
+    words.extend(_shell_word(str(arg)) for arg in args)
+    script = " ".join([*assignments, *words])
+    return "sh", ["-c", script], literal_env
+
+
+def _has_refs(*values: Any) -> bool:
+    """True when any string in values (including dict and list values) has a ${VAR} reference."""
+    def texts(value: Any):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for item in value.values():
+                yield from texts(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                yield from texts(item)
+
+    return any(ENV_REF_RE.search(text) for value in values for text in texts(value))
+
+
+def _warn_unknown_keys(
+    config: dict[str, Any], allowed: set[str], warnings: list[str]
+) -> None:
+    for key in config:
+        if key not in allowed:
+            warnings.append(f"dropped unsupported key '{key}'")
+
+
+def _opencode_ref(text: str, warnings: list[str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        if match.group(2) is not None:
+            warnings.append(
+                f"dropped default value in {match.group(0)} (OpenCode has no default syntax)"
+            )
+        return "{env:" + match.group(1) + "}"
+
+    return ENV_REF_RE.sub(replace, text)
+
+
+def _opencode_entry(config: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    if "url" in config:
+        entry: dict[str, Any] = {
+            "type": "remote",
+            "url": _opencode_ref(str(config["url"]), warnings),
+        }
+        if config.get("headers"):
+            entry["headers"] = {
+                key: _opencode_ref(str(value), warnings)
+                for key, value in config["headers"].items()
+            }
+        _warn_unknown_keys(config, {"type", "url", "headers"}, warnings)
+        return entry, warnings
+
+    command = config.get("command", "")
+    args = list(config.get("args", []))
+    env = dict(config.get("env", {}))
+    if _has_refs(command, args, env):
+        command, args, env = _sh_wrap(command, args, env)
+    entry = {"type": "local", "command": [command, *args]}
+    if env:
+        entry["environment"] = {key: str(value) for key, value in env.items()}
+    _warn_unknown_keys(config, {"type", "command", "args", "env"}, warnings)
+    return entry, warnings
+
+
+def _agy_entry(config: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
+    warnings: list[str] = []
+    if "url" in config:
+        if config.get("type") == "sse":
+            warnings.append("Antigravity supports Streamable HTTP only")
+        if _has_refs(config.get("url"), config.get("headers")):
+            warnings.append(
+                "Antigravity does not expand environment variables; add it by hand (agy mcp add …)"
+            )
+            return None, warnings
+        entry: dict[str, Any] = {"serverUrl": config["url"]}
+        if config.get("headers"):
+            entry["headers"] = dict(config["headers"])
+        _warn_unknown_keys(config, {"type", "url", "headers"}, warnings)
+        return entry, warnings
+
+    command = config.get("command", "")
+    args = list(config.get("args", []))
+    env = dict(config.get("env", {}))
+    if _has_refs(command, args, env):
+        command, args, env = _sh_wrap(command, args, env)
+    entry = {"command": command, "args": args, "env": env}
+    if "cwd" in config:
+        entry["cwd"] = config["cwd"]
+    _warn_unknown_keys(config, {"type", "command", "args", "env", "cwd"}, warnings)
+    return entry, warnings
+
+
+# Project file, container key, converter, and the rules only agal-written targets need.
+MCP_TARGETS: dict[str, dict[str, Any]] = {
+    ".mcp.json": {"container": "mcpServers"},
+    ".cursor/mcp.json": {"container": "mcpServers"},
+    "opencode.json": {
+        "container": "mcp",
+        "converter": _opencode_entry,
+        "strict": True,
+        "empty_keys": ("$schema",),
+        "schema": "https://opencode.ai/config.json",
+    },
+    ".agents/mcp_config.json": {
+        "container": "mcpServers",
+        "converter": _agy_entry,
+        "strict": True,
+    },
+}
+PROJECT_MCP_FILES = tuple(MCP_TARGETS)
+
 
 
 def install_mcp(
@@ -124,9 +298,31 @@ def install_mcp(
         rel_files = mcp_files_for_runtimes(runtimes)
         for rel in rel_files:
             mcp_path = target / rel
-            mcp_data = _read_json_file(mcp_path)
-            servers = mcp_data.setdefault("mcpServers", {})
-            servers[server_name] = config
+            mcp_target = MCP_TARGETS[rel]
+            if rel == "opencode.json" and server_name == "servers":
+                print(
+                    f"⚠️  MCP server '{server_name}': the name collides with OpenCode's "
+                    "mcp.servers container, so opencode.json was not written."
+                )
+                continue
+            mcp_data = _read_target_file(mcp_path, mcp_target)
+            if mcp_data is None:
+                print(
+                    f"⚠️  MCP server '{server_name}': cannot read {rel}, leaving it unchanged."
+                )
+                continue
+            entry: dict[str, Any] | None = config
+            converter = mcp_target.get("converter")
+            if converter:
+                entry, warnings = converter(config)
+                for warning in warnings:
+                    print(f"⚠️  MCP server '{server_name}': {warning}")
+            if entry is None:
+                continue
+            if mcp_target.get("schema") and not mcp_path.exists():
+                mcp_data.setdefault("$schema", mcp_target["schema"])
+            servers = mcp_data.setdefault(mcp_target["container"], {})
+            servers[server_name] = entry
             _write_json_file(mcp_path, mcp_data)
             installed_targets.append(rel)
         if not rel_files:
@@ -184,7 +380,7 @@ def uninstall_mcp(
 
         removed = False
         for rel in PROJECT_MCP_FILES:
-            if _drop_server(target / rel, server_name, target):
+            if _drop_server(target / rel, server_name, target, rel):
                 removed = True
 
         st_mcp = state.get("mcp", {})
@@ -243,14 +439,27 @@ def sync_installed_mcp(target_dir: Path) -> None:
             continue
         path = target / rel
         for name in managed:
-            _drop_server(path, name, target)
+            _drop_server(path, name, target, rel)
 
     for name, info in state.get("mcp", {}).items():
         config = dict(info.get("config", {}))
         for rel in wanted:
+            if rel == "opencode.json" and name == "servers":
+                continue
+            mcp_target = MCP_TARGETS[rel]
             path = target / rel
-            data = _read_json_file(path)
-            data.setdefault("mcpServers", {})[name] = config
+            data = _read_target_file(path, mcp_target)
+            if data is None:
+                continue
+            entry: dict[str, Any] | None = config
+            converter = mcp_target.get("converter")
+            if converter:
+                entry, _ = converter(config)
+            if entry is None:
+                continue
+            if mcp_target.get("schema") and not path.exists():
+                data.setdefault("$schema", mcp_target["schema"])
+            data.setdefault(mcp_target["container"], {})[name] = entry
             _write_json_file(path, data)
 
 

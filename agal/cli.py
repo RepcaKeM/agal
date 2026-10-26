@@ -16,8 +16,8 @@ from agal.config import (
     load_config,
 )
 from agal.context import sync_context_files
-from agal.hooks import install_hook, uninstall_hook
-from agal.mcp import install_mcp, sync_installed_mcp, uninstall_mcp
+from agal.hooks import install_hook, sync_installed_hooks, uninstall_hook
+from agal.mcp import install_mcp, mcp_matches, sync_installed_mcp, uninstall_mcp
 from agal.presets import (
     create_preset_interactive,
     delete_preset,
@@ -244,7 +244,11 @@ def cmd_add(
 
         elif item_type == "hook":
             res = install_hook(name, scope=scope, cfg=cfg)
-            print(f"✅ Installed hook '{name}' (scope: {scope}) from source '{res['source']}'")
+            adapters = ", ".join(sorted(res.get("adapters", {}))) or "none"
+            print(
+                f"✅ Installed hook '{name}' (scope: {scope}) from source "
+                f"'{res['source']}' [{adapters}]"
+            )
 
         elif item_type == "preset":
             res = install_preset(name, scope=scope, copy=copy, cfg=cfg)
@@ -257,6 +261,7 @@ def cmd_add(
             print()
     except (ValueError, FileNotFoundError) as e:
         print(f"❌ {e}")
+        raise SystemExit(1)
 
 
 def cmd_remove(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
@@ -331,8 +336,8 @@ def cmd_list(args: argparse.Namespace, cfg: dict[str, Any]) -> None:
             print("─" * 60)
             for hname, hinfo in sorted(hooks.items()):
                 src = hinfo.get("source", "unknown")
-                exe = " (executable)" if hinfo.get("executable") else ""
-                print(f"  · {hname:<32} [{src}]{exe}")
+                adapters = ", ".join(sorted(hinfo.get("adapters", {})))
+                print(f"  · {hname:<32} [{src}]  [{adapters}]")
             print()
 
     if cat in ("presets", "all"):
@@ -552,16 +557,101 @@ def _subagent_wizard(cfg: dict[str, Any]) -> None:
 
 
 def _start_wizard(cfg: dict[str, Any]) -> None:
-    """Pick a runtime, a preset, subagents, then skills the first three did not bring."""
+    """Reconcile the project to the runtime, preset, subagents, hooks, MCP, and skills chosen here."""
     target = Path.cwd()
     print(f"\n{ui.bold('Start')}")
-    _pick_runtimes_step(target, cfg, "Step 1 of 4")
-    print(ui.dim("Step 2 of 4 — choose a preset. Enter keeps the current one."))
+    _pick_runtimes_step(target, cfg, "Step 1 of 6")
+    print(ui.dim("Step 2 of 6 — choose a preset. Enter keeps the current one."))
     _select_and_prepare_preset(cfg)
-    _pick_subagents_step(target, cfg, "Step 3 of 4")
-    print(ui.dim("Step 4 of 4 — copy extra skills. Enter skips this step."))
-    installed = set(load_local_state(target).get("skills", {}))
-    _install_skills_interactive(cfg, exclude=installed)
+    _pick_subagents_step(target, cfg, "Step 3 of 6")
+
+    state = load_local_state(target)
+    preset: dict[str, Any] = {}
+    if state.get("preset"):
+        try:
+            preset = resolve_preset(state["preset"], cfg=cfg)
+        except Exception:
+            preset = {}
+    subagents = state.get("subagents", {}).values()
+    protected_skills = set(preset.get("skills", [])) | {
+        skill for sub in subagents for skill in sub.get("skills", [])
+    }
+    protected_mcp = set(preset.get("mcp", [])) | {
+        server for sub in subagents for server in sub.get("mcp", [])
+    }
+    protected_hooks = set(preset.get("hooks", []))
+
+    all_hooks = get_all_hooks(cfg)
+    hooks_available = {
+        name: (
+            f"{name:<28} [{info.get('source', 'unknown')}] "
+            f"[{', '.join(sorted(info.get('adapters', {}))) or 'none'}]"
+        )
+        for name, info in all_hooks.items()
+        if name not in protected_hooks
+    }
+
+    def install_hook_for_start(name: str) -> None:
+        result = install_hook(name, target_dir=target, cfg=cfg, all_hooks=all_hooks)
+        if not result.get("adapters"):
+            raise ValueError(
+                f"Hook bundle '{name}' has no adapter for the selected runtimes."
+            )
+
+    print(ui.dim("Step 4 of 6 — choose hook bundles. Enter keeps the installed extras."))
+    _reconcile_managed(
+        "Select hook bundle(s)",
+        hooks_available,
+        set(state.get("hooks", {})) - protected_hooks,
+        install_hook_for_start,
+        lambda name: uninstall_hook(name, target_dir=target),
+    )
+
+    all_mcp = get_all_mcp_servers(cfg)
+    mcp_available: dict[str, str] = {}
+    for name, info in all_mcp.items():
+        if mcp_matches(name, protected_mcp):
+            continue
+        config = info.get("config", {})
+        where = (
+            f"url: {config['url']}"
+            if "url" in config
+            else f"command: {config.get('command', '')}"
+        )
+        mcp_available[name] = f"{name:<28} [{info.get('source', 'unknown')}] {where}"
+
+    def install_mcp_for_start(name: str) -> None:
+        result = install_mcp(name, target_dir=target, cfg=cfg, all_servers=all_mcp)
+        if not result.get("targets"):
+            raise ValueError(
+                f"MCP server '{name}' was not written to any project file."
+            )
+
+    print(ui.dim("Step 5 of 6 — choose MCP servers. Enter keeps the installed extras."))
+    _reconcile_managed(
+        "Select MCP server(s)",
+        mcp_available,
+        {name for name in state.get("mcp", {}) if not mcp_matches(name, protected_mcp)},
+        install_mcp_for_start,
+        lambda name: uninstall_mcp(name, target_dir=target),
+    )
+
+    all_skills = get_all_skills(cfg)
+    skills_available = {
+        name: _skill_label(name, info)
+        for name, info in all_skills.items()
+        if name not in protected_skills
+    }
+    print(ui.dim("Step 6 of 6 — choose extra skills. Enter keeps the installed extras."))
+    _reconcile_managed(
+        "Select extra skill(s)",
+        skills_available,
+        set(state.get("skills", {})) - protected_skills,
+        lambda name: install_skill(
+            name, target_dir=target, cfg=cfg, all_skills=all_skills
+        ),
+        lambda name: uninstall_skill(name, target_dir=target),
+    )
     cmd_status(argparse.Namespace(), cfg)
 
 
@@ -611,6 +701,57 @@ def _pick_subagents_step(target: Path, cfg: dict[str, Any], step: str) -> None:
             print(f"❌ {exc}")
 
 
+def _skill_label(name: str, info: dict[str, Any]) -> str:
+    src = info.get("source", "unknown")
+    clean_desc = " ".join(str(info.get("description", "")).split())
+    desc_short = (clean_desc[:55] + "...") if len(clean_desc) > 55 else clean_desc
+    label = f"{name:<32} [{src}]"
+    return f"{label:<48} {desc_short}" if desc_short else label
+
+
+def _reconcile_managed(
+    prompt: str,
+    available: dict[str, str],
+    current: set[str],
+    install: Any,
+    uninstall: Any,
+) -> None:
+    """Enter keeps current; a non-empty selection replaces the managed set."""
+    items = dict(available)
+    for name in current - items.keys():
+        items[name] = name
+    if not items:
+        print(ui.dim(f"{prompt}: nothing available."))
+        return
+    names = sorted(items)
+    labels = [
+        f"{items[name]}{' (installed)' if name in current else ''}" for name in names
+    ]
+    selected = set(_select_items_cli(names, prompt, display_labels=labels))
+    if not selected:
+        return
+
+    for name in sorted(selected - current):
+        try:
+            install(name)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"❌ {exc}")
+            print("Skipping removals because some installs failed.")
+            return
+
+    to_remove = sorted(current - selected)
+    if not to_remove:
+        return
+    print(f"Not selected, installed now: {', '.join(to_remove)}")
+    if input("Remove them? [y/N] ").strip().lower() != "y":
+        return
+    for name in to_remove:
+        try:
+            uninstall(name)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"❌ {exc}")
+
+
 def _print_runtimes(target: Path) -> None:
     selected = load_local_state(target).get("runtimes")
     if selected:
@@ -628,6 +769,7 @@ def _apply_runtimes(target: Path, names: list[str] | None, cfg: dict[str, Any]) 
     save_local_state(target, state)
     sync_installed_skills(target, cfg)
     sync_installed_mcp(target)
+    sync_installed_hooks(target, cfg)
     sync_context_files(target)
     sync_installed_subagents(target, cfg)
 
@@ -878,16 +1020,10 @@ def _install_skills_interactive(
             names = matched
             break
         print(f"No skills match '{query}'.")
-    labels = []
-    for sname in names:
-        sinfo = skills_dict[sname]
-        src = sinfo.get("source", "unknown")
-        clean_desc = " ".join(str(sinfo.get("description", "")).split())
-        desc_short = (clean_desc[:55] + "...") if len(clean_desc) > 55 else clean_desc
-        label = f"{sname:<32} [{src}]"
-        if desc_short:
-            label = f"{label:<48} {desc_short}"
-        labels.append(label)
+    labels = [
+        _skill_label(sname, skills_dict[sname])
+        for sname in names
+    ]
     selected = _select_items_cli(names, "Select skill(s) to copy", display_labels=labels)
     if not selected:
         return

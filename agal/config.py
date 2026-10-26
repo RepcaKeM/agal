@@ -78,6 +78,10 @@ def mcp_files_for_runtimes(runtimes: list[str] | None) -> list[str]:
         files.append(".mcp.json")
     if "cursor" in runtimes:
         files.append(".cursor/mcp.json")
+    if "opencode" in runtimes:
+        files.append("opencode.json")
+    if "agy" in runtimes:
+        files.append(".agents/mcp_config.json")
     return files
 
 GLOBAL_SKILL_DIRS = [

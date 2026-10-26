@@ -169,8 +169,104 @@ class TestSources(unittest.TestCase):
             self.assertIn("db", indexed["mcp_servers"])
             self.assertEqual(indexed["mcp_servers"]["db"]["config"]["command"], "python")
 
-            self.assertEqual(len(indexed["hooks"]), 1)
-            self.assertEqual(indexed["hooks"][0]["name"], "pre-tool.sh")
+            # A bare hooks/ directory is not an adapter any runtime can load.
+            self.assertEqual(indexed["hooks"], [])
+
+    def _write_marketplace(self, src, name="mp", plugin="plug"):
+        plugin_dir = src / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "marketplace.json").write_text(
+            json.dumps({
+                "name": name,
+                "plugins": [{"name": plugin, "source": "./"}],
+            }),
+            encoding="utf-8",
+        )
+
+    def test_index_hook_bundle_with_all_adapters(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "fixture"
+            src.mkdir()
+            self._write_marketplace(src)
+            (src / "hooks").mkdir()
+            (src / "hooks" / "hook.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            plugins = src / ".opencode" / "plugins"
+            plugins.mkdir(parents=True)
+            entry = plugins / "index.js"
+            entry.write_text("export default {}\n", encoding="utf-8")
+            agy_dir = src / ".antigravity-plugin"
+            agy_dir.mkdir()
+            (agy_dir / "hooks.json").write_text(
+                json.dumps({"lint": {"enabled": True}}), encoding="utf-8"
+            )
+
+            hooks = index_source_dir(src)["hooks"]
+            self.assertEqual(len(hooks), 1)
+            self.assertEqual(hooks[0]["name"], "fixture")
+            self.assertEqual(hooks[0]["path"], str(src.resolve()))
+            self.assertEqual(hooks[0]["adapters"], {
+                "claude": {"marketplace": "mp", "plugin": "plug"},
+                "opencode": str(entry.resolve()),
+                "agy": str((agy_dir / "hooks.json").resolve()),
+            })
+
+    def test_index_claude_only_bundle(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "claude-only"
+            src.mkdir()
+            self._write_marketplace(src)
+            (src / "hooks").mkdir()
+
+            hooks = index_source_dir(src)["hooks"]
+            self.assertEqual(len(hooks), 1)
+            self.assertEqual(hooks[0]["adapters"], {
+                "claude": {"marketplace": "mp", "plugin": "plug"},
+            })
+
+    def test_pure_skill_plugin_is_not_a_hook_bundle(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "pure-skills"
+            src.mkdir()
+            self._write_marketplace(src)
+            plugin_dir = src / ".claude-plugin"
+            (plugin_dir / "plugin.json").write_text(
+                json.dumps({"name": "plug"}), encoding="utf-8"
+            )
+            self._write_skill(src / "skills" / "one", "one")
+
+            indexed = index_source_dir(src)
+            self.assertIn("one", indexed["skills"])
+            self.assertEqual(indexed["hooks"], [])
+
+    def test_claude_hooks_json_is_not_an_agy_adapter(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "claude-hooks"
+            src.mkdir()
+            self._write_marketplace(src)
+            hooks_dir = src / "hooks"
+            hooks_dir.mkdir()
+            (hooks_dir / "hooks.json").write_text(
+                json.dumps({"hooks": {"SessionStart": []}}), encoding="utf-8"
+            )
+
+            hooks = index_source_dir(src)["hooks"]
+            self.assertEqual(len(hooks), 1)
+            self.assertIn("claude", hooks[0]["adapters"])
+            self.assertNotIn("agy", hooks[0]["adapters"])
+
+    def test_mjs_only_opencode_dir_is_not_an_adapter(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "mjs-only"
+            src.mkdir()
+            self._write_marketplace(src)
+            (src / "hooks").mkdir()
+            plugins = src / ".opencode" / "plugins"
+            plugins.mkdir(parents=True)
+            (plugins / "hook.mjs").write_text("export default {}\n", encoding="utf-8")
+
+            hooks = index_source_dir(src)["hooks"]
+            self.assertEqual(len(hooks), 1)
+            self.assertNotIn("opencode", hooks[0]["adapters"])
 
     def test_detect_source_binaries_pyproject(self):
         from agal.sources import detect_source_binaries
